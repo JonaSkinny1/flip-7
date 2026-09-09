@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reactor Overload — Datapad</title>
+  <link rel="stylesheet" href="css/holo.css" />
+</head>
+<body>
+  <div class="pad-shell">
+    <header class="holo-header">
+      <h1>Datapad</h1>
+      <span class="tag" id="player-tag">PRIVATE · P1</span>
+    </header>
+
+    <section class="panel" aria-label="Hand">
+      <h2>Hand (stub)</h2>
+      <div class="hand" id="hand"></div>
+    </section>
+
+    <div class="actions" role="group" aria-label="Turn actions">
+      <button type="button" id="btn-hit">Hit · Draw Core</button>
+      <button type="button" id="btn-stay">Stay · Bank Charge</button>
+      <button type="button" class="hazard" id="btn-reset">Reset demo state</button>
+    </div>
+
+    <p class="pad-meta" id="pad-meta">Turn charge: 0 · Active: P1</p>
+
+    <p class="todo">
+      Chrome stub only. Containment Lock / Overcharge Pulse / Neutralizer Shield
+      resolve in the Python <code>flip7</code> engine — TODO: thin HTTP/WS bridge.
+      View table: <a href="public.html">public.html</a>
+    </p>
+  </div>
+  <script src="js/holo.js"></script>
+  <script>
+    (function () {
+      const player = Holo.qsPlayer();
+      document.getElementById("player-tag").textContent = "PRIVATE · " + player;
+
+      function cardEl(raw) {
+        const div = document.createElement("div");
+        const isAction = !/^\d+$/.test(String(raw));
+        div.className = "card" + (isAction ? " action" : "");
+        if (raw === "FREEZE") {
+          div.innerHTML = '<span class="rank">LOCK</span><span class="sub">Containment</span>';
+        } else if (raw === "FLIP_THREE") {
+          div.innerHTML = '<span class="rank">PULSE</span><span class="sub">Overcharge</span>';
+        } else if (raw === "SECOND_CHANCE") {
+          div.innerHTML = '<span class="rank">SHIELD</span><span class="sub">Neutralizer</span>';
+        } else {
+          div.innerHTML = '<span class="rank">' + raw + '</span><span class="sub">flux</span>';
+        }
+        return div;
+      }
+
+      function render(state) {
+        const hand = document.getElementById("hand");
+        hand.innerHTML = "";
+        (state.hand || []).forEach(function (c) {
+          hand.appendChild(cardEl(c));
+        });
+        document.getElementById("pad-meta").textContent =
+          "Turn charge: " + state.turnScore +
+          " · Active: " + state.activePlayer +
+          " · " + (state.status || "");
+      }
+
+      function mutate(fn) {
+        const state = Holo.load();
+        // Demo: pad drives whichever seat is active (ignore ?player for stub)
+        fn(state);
+        Holo.save(state);
+        render(state);
+      }
+
+      document.getElementById("btn-hit").addEventListener("click", function () {
+        mutate(Holo.applyHit);
+      });
+      document.getElementById("btn-stay").addEventListener("click", function () {
+        mutate(Holo.applyStay);
+      });
+      document.getElementById("btn-reset").addEventListener("click", function () {
+        render(Holo.resetDemo());
+      });
+
+      render(Holo.load());
+      Holo.subscribe(render);
+      setInterval(function () { render(Holo.load()); }, 800);
+    })();
+  </script>
+</body>
+</html>

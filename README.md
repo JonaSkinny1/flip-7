@@ -20,6 +20,18 @@ python3 -m flip7 --players 4
 python3 -m unittest discover -s tests -v
 ```
 
+## Holotable (Reactor Overload stub)
+
+Static Pepper’s Ghost / table + datapad chrome. Software only (no actuators / MQTT). Demo sync via `localStorage` between tabs; Python `flip7` rules stay the source of truth — see `holotable/BRIDGE.md`.
+
+```bash
+cd holotable && python3 -m http.server 8766
+# public: http://127.0.0.1:8766/public.html
+# pad: http://127.0.0.1:8766/pad.html
+```
+
+Reskin (UI chrome only): Freeze → Containment Lock · Flip 3 → Overcharge Pulse · Second Chance → Neutralizer Shield.
+
 ## Rules (summary)
 
 - Deck: one `0`; card `N` appears `N` times for `N = 1..12`; three each of `SECOND_CHANCE`, `FREEZE`, `FLIP_THREE`.
@@ -32,6 +44,7 @@ python3 -m unittest discover -s tests -v
 ## Roadmap
 
 - [x] Terminal multiplayer rules engine
+- [x] Holotable web stub (public table + datapad)
 - [ ] Godot 4 table UI / Pepper’s Ghost layout
 - [ ] Private “datapad” hands over local WebSocket
 
