@@ -1,3 +1,3 @@
-"""Flip 7 push-your-luck rules engine."""
+"""Flip 7 push-your-luck rules engine + Helios / Reactor Overload live table."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

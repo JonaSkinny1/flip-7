@@ -3,73 +3,237 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Reactor Overload — Holotable</title>
+  <title>Helios — Ground Station Holotable</title>
   <link rel="stylesheet" href="css/holo.css" />
 </head>
-<body>
-  <div class="holo-shell">
-    <header class="holo-header">
-      <h1>Reactor Overload</h1>
-      <span class="tag">PEPPER’S GHOST · PUBLIC TABLE</span>
-    </header>
-
-    <div class="table-layout">
-      <section class="panel reactor" aria-label="Reactor core">
-        <div class="reactor-core">
-          <span class="core-label">Turn charge</span>
-          <span class="core-value" id="turn-score">0</span>
-        </div>
-        <div class="last-flip">
-          <div class="flip-card" id="last-flip">—</div>
-          <div class="hint" id="last-flip-label">standby</div>
-        </div>
-      </section>
-
-      <aside class="panel" aria-label="Crew scores">
-        <h2>Crew scores</h2>
-        <ul class="scores" id="scores"></ul>
-        <p class="legend">
-          First to <strong>200</strong> wins.<br />
-          Freeze → <strong>Containment Lock</strong><br />
-          Flip 3 → <strong>Overcharge Pulse</strong><br />
-          Second Chance → <strong>Neutralizer Shield</strong>
-        </p>
-      </aside>
+<body class="helios">
+  <header class="helios-top">
+    <div class="helios-brand">
+      <span class="name">Helios</span>
+      <span class="sub">Youngstown ground station · Pepper’s Ghost table</span>
     </div>
+    <nav class="station-bar" aria-label="Stations">
+      <button type="button" data-station="WEATHER" class="active"><span class="key">1</span>Weather</button>
+      <button type="button" data-station="NAV"><span class="key">2</span>Nav</button>
+      <button type="button" data-station="REACTOR"><span class="key">3</span>Reactor</button>
+      <button type="button" data-station="BIO"><span class="key">4</span>Bio</button>
+      <button type="button" data-station="COMMS"><span class="key">5</span>Comms</button>
+    </nav>
+    <div class="conn" id="conn">connecting…</div>
+  </header>
 
-    <div class="status-bar" id="status">Reactor online · awaiting draw</div>
+  <main class="stage">
+    <!-- WEATHER -->
+    <section class="station-panel active" id="station-WEATHER" data-station-panel="WEATHER">
+      <div class="panel">
+        <h2>Space weather <span class="mock-badge">MOCK</span></h2>
+        <div class="viz-grid">
+          <div>
+            <div>Kp index</div>
+            <div style="font-family:var(--mono);font-size:1.8rem;color:var(--teal)" data-kp>—</div>
+            <div class="kp-blocks" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+          </div>
+          <div>
+            <div>Solar flux proxy</div>
+            <div style="font-family:var(--mono);font-size:1.8rem;color:var(--orange)" data-solar>—</div>
+            <div class="meter"><span data-solar-bar style="width:40%"></span></div>
+            <p class="legend">Stub viz for holotable demos. Live NOAA/SWPC optional later.</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <p class="todo">
-      Stub UI · open <a href="pad.html">pad.html</a> in another tab for datapad actions.
-      Shared via localStorage. <!-- TODO: bridge to flip7 Python engine -->
-    </p>
-  </div>
+    <!-- NAV -->
+    <section class="station-panel" id="station-NAV" data-station-panel="NAV">
+      <div class="panel">
+        <h2>Navigation <span class="mock-badge">MOCK</span></h2>
+        <div class="nav-orbit" aria-label="Earth / ISS stub">
+          <div class="earth" title="Earth"></div>
+          <div class="iss" title="ISS stub"></div>
+        </div>
+        <p class="legend" style="text-align:center">
+          Earth / ISS-style orbit stub. Wire TLE / ISS API in a later pass.
+        </p>
+      </div>
+    </section>
+
+    <!-- REACTOR -->
+    <section class="station-panel" id="station-REACTOR" data-station-panel="REACTOR">
+      <div class="reactor-grid">
+        <div class="panel reactor-core-wrap">
+          <h2>Reactor Overload · Flip 7 rules</h2>
+          <div class="reactor-core" id="reactor-core">
+            <span class="core-label">Turn charge</span>
+            <span class="core-value" id="turn-score">0</span>
+          </div>
+          <div class="last-flip">
+            <div class="flip-card" id="last-flip">—</div>
+            <div class="flip-hint" id="last-hint">awaiting flux</div>
+          </div>
+          <div class="hand-row" id="public-hand"></div>
+        </div>
+        <aside class="panel">
+          <h2>Crew scores</h2>
+          <ul class="scores" id="scores"></ul>
+          <p class="legend">
+            First to <strong>200</strong>.<br />
+            Freeze → <strong>Containment Lock</strong><br />
+            Flip 3 → <strong>Overcharge Pulse</strong><br />
+            Second Chance → <strong>Neutralizer Shield</strong><br />
+            Seven unique → <strong>Reactor Overload</strong> (+15)
+          </p>
+        </aside>
+      </div>
+      <div class="status-bar" id="status">Reactor standby</div>
+      <p class="todo">
+        Private actions: open
+        <a href="pad.html?seat=0">pad seat 0</a> /
+        <a href="pad.html?seat=1">seat 1</a>
+        (more seats if match has them). Keys <kbd>1</kbd>–<kbd>5</kbd> switch stations.
+      </p>
+    </section>
+
+    <!-- BIO -->
+    <section class="station-panel" id="station-BIO" data-station-panel="BIO">
+      <div class="panel">
+        <h2>Bio lab · specimens <span class="mock-badge">MOCK</span></h2>
+        <div class="vials" id="vials">
+          <!-- SP-01 .. SP-08 -->
+        </div>
+        <p class="legend">Specimen vials SP-01–SP-08. Status flips locally for table energy.</p>
+      </div>
+    </section>
+
+    <!-- COMMS -->
+    <section class="station-panel" id="station-COMMS" data-station-panel="COMMS">
+      <div class="panel">
+        <h2>Comms · frequency dial <span class="mock-badge">MOCK</span></h2>
+        <div class="freq-dial" id="freq-dial">
+          <button type="button" data-freq="142.7" class="active">142.7</button>
+          <button type="button" data-freq="218.4">218.4</button>
+          <button type="button" data-freq="333.0">333.0</button>
+          <button type="button" data-freq="407.1">407.1</button>
+        </div>
+        <div class="comms-wave" aria-hidden="true"></div>
+        <p class="legend" id="freq-label">Locked 142.7 MHz (stub)</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot-hint">HELIOS · software holotable · no actuators / MQTT in this build</footer>
+
   <script src="js/holo.js"></script>
   <script>
     (function () {
-      function render(state) {
-        document.getElementById("turn-score").textContent = state.turnScore;
-        document.getElementById("last-flip").textContent =
-          state.lastFlip === "FREEZE" ? "LOCK"
-          : state.lastFlip === "FLIP_THREE" ? "PULSE"
-          : state.lastFlip === "SECOND_CHANCE" ? "SHIELD"
-          : state.lastFlip;
-        document.getElementById("last-flip-label").textContent = state.lastFlipLabel || Holo.flipLabel(state.lastFlip);
-        document.getElementById("status").textContent = state.status;
+      const STATIONS = ["WEATHER", "NAV", "REACTOR", "BIO", "COMMS"];
+      let current = "WEATHER";
+
+      function showStation(id) {
+        current = id;
+        document.querySelectorAll("[data-station]").forEach(function (btn) {
+          btn.classList.toggle("active", btn.getAttribute("data-station") === id);
+        });
+        document.querySelectorAll("[data-station-panel]").forEach(function (panel) {
+          panel.classList.toggle("active", panel.getAttribute("data-station-panel") === id);
+        });
+        if (location.hash !== "#" + id) {
+          history.replaceState(null, "", "#" + id);
+        }
+      }
+
+      document.querySelectorAll("[data-station]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          showStation(btn.getAttribute("data-station"));
+        });
+      });
+
+      window.addEventListener("keydown", function (e) {
+        if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+        const n = e.key;
+        if (n >= "1" && n <= "5") {
+          showStation(STATIONS[Number(n) - 1]);
+        }
+      });
+
+      const hash = (location.hash || "").replace(/^#/, "").toUpperCase();
+      if (STATIONS.indexOf(hash) >= 0) showStation(hash);
+
+      // BIO vials
+      const vials = document.getElementById("vials");
+      for (let i = 1; i <= 8; i++) {
+        const code = "SP-" + String(i).padStart(2, "0");
+        const d = document.createElement("div");
+        d.className = "vial";
+        d.innerHTML = '<div class="code">' + code + '</div><div class="st">STABLE</div>';
+        vials.appendChild(d);
+      }
+
+      // COMMS
+      document.getElementById("freq-dial").addEventListener("click", function (e) {
+        const btn = e.target.closest("button[data-freq]");
+        if (!btn) return;
+        document.querySelectorAll("#freq-dial button").forEach(function (b) {
+          b.classList.toggle("active", b === btn);
+        });
+        document.getElementById("freq-label").textContent =
+          "Locked " + btn.getAttribute("data-freq") + " MHz (stub)";
+      });
+
+      // Mock ticks
+      const weatherRoot = document.getElementById("station-WEATHER");
+      const bioRoot = document.getElementById("station-BIO");
+      Holo.Stations.weatherTick(weatherRoot);
+      setInterval(function () { Holo.Stations.weatherTick(weatherRoot); }, 2800);
+      setInterval(function () { Holo.Stations.bioTick(bioRoot); }, 4200);
+
+      // Reactor live state
+      const conn = document.getElementById("conn");
+
+      function renderReactor(state) {
+        document.getElementById("turn-score").textContent = state.turn_score;
+        document.getElementById("last-flip").textContent = Holo.cardShort(state.last_flip);
+        document.getElementById("last-hint").textContent =
+          state.last_flip && state.last_flip !== "—"
+            ? state.last_flip + (state.shield ? " · Neutralizer Shield armed" : "")
+            : "awaiting flux";
+        document.getElementById("status").textContent = state.status || "";
+        const core = document.getElementById("reactor-core");
+        core.classList.toggle("bust", /bust/i.test(state.status || ""));
+
         const ul = document.getElementById("scores");
         ul.innerHTML = "";
-        state.scores.forEach(function (s) {
+        (state.players || []).forEach(function (p) {
           const li = document.createElement("li");
-          if (s.id === state.activePlayer) li.className = "active";
+          if (p.active) li.className = "active";
           li.innerHTML =
-            '<span class="name">' + s.name + " (" + s.id + ")</span>" +
-            '<span class="pts">' + s.pts + "</span>";
+            '<span>' + p.name + " · S" + p.seat + "</span>" +
+            '<span class="pts">' + p.score + "</span>";
           ul.appendChild(li);
         });
+
+        const hand = document.getElementById("public-hand");
+        hand.innerHTML = "";
+        (state.hand || []).forEach(function (c) {
+          const el = document.createElement("div");
+          el.className = "mini-card" + (Holo.isActionLabel(c) ? " action" : "");
+          el.textContent = Holo.cardShort(c);
+          hand.appendChild(el);
+        });
       }
-      render(Holo.load());
-      Holo.subscribe(render);
-      setInterval(function () { render(Holo.load()); }, 800);
+
+      Holo.connect({
+        role: "table",
+        onConn: function (ok) {
+          conn.textContent = ok ? "link OK · ws" : "link… (REST poll)";
+          conn.className = "conn " + (ok ? "ok" : "bad");
+        },
+        onState: renderReactor,
+        onError: function (err) {
+          document.getElementById("status").textContent = String(err);
+        },
+      });
     })();
   </script>
 </body>

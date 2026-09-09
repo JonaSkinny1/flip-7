@@ -1,18 +1,55 @@
-# Flip 7
+# Flip 7 · Helios · Reactor Overload
 
-Text-based multiplayer **Flip 7** (push-your-luck) in Python. Rules reference for a future **Godot 4** holographic-table build (freighter / “Reactor Overload” aesthetic).
+Python **Flip 7** rules engine plus a **Helios** five-station holotable web UI. The **REACTOR** station is a full **Reactor Overload** (Flip 7 reskin) multiplayer table with private datapads.
 
-## Run
+Software only in this repo — no physical Pepper’s Ghost hardware, actuators, or MQTT.
+
+## Helios vs Reactor
+
+| Layer | What it is |
+| --- | --- |
+| **Helios** | Ground-station shell on the public holotable: **WEATHER · NAV · REACTOR · BIO · COMMS** (keys `1`–`5`). Black / teal / hazard chrome for Pepper’s Ghost demos (Youngstown flavor). |
+| **Reactor Overload** | Full Flip 7 game on the REACTOR station: real `flip7` deck & scoring, Containment Lock / Overcharge Pulse / Neutralizer Shield labels, race to **200**. |
+| **Other stations** | Polished **MOCK** stubs (solar/Kp, Earth/ISS orbit, vials SP-01–SP-08, frequency dial). Live APIs optional later. |
+
+## Run — terminal Flip 7
 
 ```bash
 python3 -m flip7
-```
-
-Optional player count:
-
-```bash
 python3 -m flip7 --players 4
 ```
+
+## Run — Helios holotable server
+
+```bash
+python3 -m flip7.server
+# optional: --host 0.0.0.0 --port 8766 --players 3
+```
+
+Then open:
+
+```
+# public Helios table (stations 1–5; REACTOR = live game)
+http://127.0.0.1:8766/
+http://127.0.0.1:8766/index.html#REACTOR
+http://127.0.0.1:8766/public.html          # redirects to #REACTOR
+
+# private datapads (one tab/device per seat)
+http://127.0.0.1:8766/pad.html?seat=0
+http://127.0.0.1:8766/pad.html?seat=1
+```
+
+Sync: **WebSocket** `ws://127.0.0.1:8766/ws?role=table|pad&seat=N` with REST fallback (`GET /api/state`, `POST /api/hit|stay|new`).
+
+### Static-only (UI chrome, no engine)
+
+```bash
+cd holotable && python3 -m http.server 8766
+# public: http://127.0.0.1:8766/public.html
+# pad:    http://127.0.0.1:8766/pad.html
+```
+
+Without `flip7.server`, pads cannot drive real draws — use the Helios server for play.
 
 ## Tests
 
@@ -20,32 +57,27 @@ python3 -m flip7 --players 4
 python3 -m unittest discover -s tests -v
 ```
 
-## Holotable (Reactor Overload stub)
-
-Static Pepper’s Ghost / table + datapad chrome. Software only (no actuators / MQTT). Demo sync via `localStorage` between tabs; Python `flip7` rules stay the source of truth — see `holotable/BRIDGE.md`.
-
-```bash
-cd holotable && python3 -m http.server 8766
-# public: http://127.0.0.1:8766/public.html
-# pad: http://127.0.0.1:8766/pad.html
-```
-
-Reskin (UI chrome only): Freeze → Containment Lock · Flip 3 → Overcharge Pulse · Second Chance → Neutralizer Shield.
-
 ## Rules (summary)
 
 - Deck: one `0`; card `N` appears `N` times for `N = 1..12`; three each of `SECOND_CHANCE`, `FREEZE`, `FLIP_THREE`.
-- Hit draws; a duplicate nonzero number **busts** the turn (0 points) unless `SECOND_CHANCE` shields once.
-- `FREEZE` banks the current numeric score and ends the turn.
-- `FLIP_THREE` forces three draws (nested actions resolve as they appear).
-- Seven unique numbers → `sum + 15` and end the turn.
+- Hit draws; duplicate nonzero number **busts** (0) unless Neutralizer Shield (`SECOND_CHANCE`) absorbs once.
+- Containment Lock (`FREEZE`) banks numeric score and ends the turn.
+- Overcharge Pulse (`FLIP_THREE`) forces three draws.
+- Seven unique numbers → `sum + 15` (**Reactor Overload** / Flip 7) and end the turn.
 - First to **200** wins.
 
-## Roadmap
+## Architecture
+
+- `flip7/` — rules (`deck`, `game`, `turn`, `live`) + `server` (stdlib HTTP + WebSocket).
+- `holotable/` — Helios static UI (`index.html`, `pad.html`, `css/`, `js/`).
+- See `holotable/BRIDGE.md`.
+
+## Roadmap / out of scope here
 
 - [x] Terminal multiplayer rules engine
-- [x] Holotable web stub (public table + datapad)
-- [ ] Godot 4 table UI / Pepper’s Ghost layout
-- [ ] Private “datapad” hands over local WebSocket
+- [x] Helios five-station shell + Reactor Overload live server
+- [ ] Godot 4 table UI / Pepper’s Ghost layout (phase 2)
+- [ ] Physical Pepper’s Ghost, Helios station hardware, actuators, MQTT / Home Assistant
+- [ ] Live WEATHER / NAV data feeds
 
 Owner: Jonathan Sarkkinen (`JonaSkinny1`)

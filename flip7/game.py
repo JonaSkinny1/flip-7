@@ -6,7 +6,7 @@ import random
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from .deck import Card, create_deck, draw_card, numeric_score, shuffle_deck
+from .deck import Card, create_deck, numeric_score, shuffle_deck
 
 
 @dataclass
@@ -46,81 +46,9 @@ class Flip7Game:
 
     def play_turn(self, chooser) -> TurnResult:
         """chooser(hand, has_shield) -> 'H' or 'S'."""
-        hand: List[Card] = []
-        shield = False
-        log: List[str] = []
-        forced_draws = 0
+        from .turn import play_turn_with_controller
 
-        def resolve_draw() -> Optional[TurnResult]:
-            nonlocal shield, forced_draws
-            self._ensure_deck()
-            card = draw_card(self.deck, self.discard)
-            log.append(f"Drew {card}")
-
-            if isinstance(card, str):
-                if card == "SECOND_CHANCE":
-                    shield = True
-                    hand.append(card)
-                    log.append("Shield armed")
-                    return None
-                if card == "FREEZE":
-                    hand.append(card)
-                    pts = numeric_score(hand)
-                    log.append(f"FREEZE — bank {pts}")
-                    return TurnResult(points=pts, froze=True, hand=list(hand), log=list(log))
-                if card == "FLIP_THREE":
-                    hand.append(card)
-                    forced_draws += 3
-                    log.append("FLIP_THREE — three forced draws")
-                    return None
-
-            # number card
-            if card != 0 and card in [c for c in hand if isinstance(c, int)]:
-                if shield:
-                    shield = False
-                    log.append(f"Duplicate {card} blocked by SECOND_CHANCE")
-                    # burn the duplicate into discard, keep hand
-                    self.discard.append(card)
-                    return None
-                log.append(f"Bust on duplicate {card}")
-                self.discard.extend(hand)
-                self.discard.append(card)
-                return TurnResult(points=0, busted=True, hand=[], log=list(log))
-
-            hand.append(card)
-            uniques = {c for c in hand if isinstance(c, int)}
-            if len(uniques) >= 7:
-                pts = numeric_score(hand) + 15
-                log.append(f"Flip 7! {pts} points")
-                return TurnResult(points=pts, flip7=True, hand=list(hand), log=list(log))
-            return None
-
-        # opening draw
-        early = resolve_draw()
-        if early:
-            self._end_hand(hand, early)
-            return early
-
-        while True:
-            while forced_draws > 0:
-                forced_draws -= 1
-                early = resolve_draw()
-                if early:
-                    self._end_hand(hand, early)
-                    return early
-
-            choice = chooser(list(hand), shield)
-            if choice.upper().startswith("S"):
-                pts = numeric_score(hand)
-                log.append(f"Stay — bank {pts}")
-                result = TurnResult(points=pts, hand=list(hand), log=list(log))
-                self._end_hand(hand, result)
-                return result
-
-            early = resolve_draw()
-            if early:
-                self._end_hand(hand, early)
-                return early
+        return play_turn_with_controller(self, chooser)
 
     def _end_hand(self, hand: List[Card], result: TurnResult) -> None:
         if not result.busted:

@@ -1,19 +1,19 @@
-# Holotable ↔ flip7 bridge (optional stub note)
+# Helios ↔ flip7 bridge
 
-Software-only. No actuators / MQTT.
+## Architecture
 
-The **Python `flip7` package** remains the rules source of truth (deck, bust, Freeze / Flip 3 / Second Chance, Flip-7 bonus, 200 win).
+- **`flip7/`** Python package: Flip 7 rules (`deck`, `game`, `turn`, `live`).
+- **`python -m flip7.server`**: serves `holotable/` static UI, REST (`/api/*`), WebSocket (`/ws`).
+- **Helios shell** (`index.html`): five stations (keys 1–5). WEATHER / NAV / BIO / COMMS are labeled mocks.
+- **REACTOR**: live `LiveMatch` — real draw / bust / stay / Containment Lock / Overcharge Pulse / Neutralizer Shield / Flip-7 (+15) / race to 200.
+- **Datapads** (`pad.html?seat=N`): private Hit / Stay; state synced over WebSocket (REST poll fallback).
 
-This `holotable/` UI is a **chrome stub**: shared demo state via `localStorage` (+ `BroadcastChannel` when available). It does **not** call the engine yet.
+## Out of scope (this build)
 
-## Suggested thin bridge (TODO)
+- Physical Pepper’s Ghost hardware, actuators, MQTT / Home Assistant
+- Full Godot 4 port (phase 2)
+- Live WEATHER/NAV APIs (stubs only)
 
-1. Expose a small local HTTP or WebSocket server from Python that wraps `flip7.game`.
-2. Datapad posts actions: `hit` | `stay` (and later action-card resolves).
-3. Public table polls or subscribes to state: scores, last flip, turn charge, active seat.
-4. Keep Pepper’s Ghost / freighter reskin names in the UI only:
-   - Freeze → Containment Lock
-   - Flip 3 → Overcharge Pulse
-   - Second Chance → Neutralizer Shield
+## Run
 
-Until then: `python3 -m http.server 8766` under `holotable/` is enough for layout demos.
+See root README.

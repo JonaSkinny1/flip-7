@@ -3,90 +3,115 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Reactor Overload — Datapad</title>
+  <title>Helios Datapad — Reactor Overload</title>
   <link rel="stylesheet" href="css/holo.css" />
 </head>
 <body>
   <div class="pad-shell">
     <header class="holo-header">
       <h1>Datapad</h1>
-      <span class="tag" id="player-tag">PRIVATE · P1</span>
+      <span class="tag" id="player-tag">PRIVATE</span>
     </header>
 
     <section class="panel" aria-label="Hand">
-      <h2>Hand (stub)</h2>
+      <h2>Hand</h2>
       <div class="hand" id="hand"></div>
     </section>
 
-    <div class="actions" role="group" aria-label="Turn actions">
+    <div class="actions">
       <button type="button" id="btn-hit">Hit · Draw Core</button>
       <button type="button" id="btn-stay">Stay · Bank Charge</button>
-      <button type="button" class="hazard" id="btn-reset">Reset demo state</button>
+      <button type="button" class="hazard" id="btn-new">New match</button>
     </div>
 
-    <p class="pad-meta" id="pad-meta">Turn charge: 0 · Active: P1</p>
+    <p class="pad-meta" id="pad-meta">Connecting…</p>
+    <p class="conn" id="conn" style="text-align:center;margin-top:0.5rem">…</p>
 
     <p class="todo">
-      Chrome stub only. Containment Lock / Overcharge Pulse / Neutralizer Shield
-      resolve in the Python <code>flip7</code> engine — TODO: thin HTTP/WS bridge.
-      View table: <a href="public.html">public.html</a>
+      Containment Lock / Overcharge Pulse / Neutralizer Shield resolve in the
+      Python <code>flip7</code> engine. Public table:
+      <a href="index.html#REACTOR">Helios REACTOR</a>.
+      Seat via <code>?seat=0</code>, <code>?seat=1</code>, …
     </p>
   </div>
   <script src="js/holo.js"></script>
   <script>
     (function () {
-      const player = Holo.qsPlayer();
-      document.getElementById("player-tag").textContent = "PRIVATE · " + player;
+      const params = new URLSearchParams(location.search);
+      const seat = Number(params.get("seat") || "0");
+      document.getElementById("player-tag").textContent = "PRIVATE · SEAT " + seat;
 
-      function cardEl(raw) {
+      let state = null;
+      let client = null;
+
+      function cardEl(label) {
         const div = document.createElement("div");
-        const isAction = !/^\d+$/.test(String(raw));
-        div.className = "card" + (isAction ? " action" : "");
-        if (raw === "FREEZE") {
-          div.innerHTML = '<span class="rank">LOCK</span><span class="sub">Containment</span>';
-        } else if (raw === "FLIP_THREE") {
-          div.innerHTML = '<span class="rank">PULSE</span><span class="sub">Overcharge</span>';
-        } else if (raw === "SECOND_CHANCE") {
-          div.innerHTML = '<span class="rank">SHIELD</span><span class="sub">Neutralizer</span>';
+        const action = Holo.isActionLabel(label);
+        div.className = "card" + (action ? " action" : "");
+        const short = Holo.cardShort(label);
+        if (action) {
+          div.innerHTML =
+            '<span class="rank">' + short + "</span>" +
+            '<span class="sub">' + String(label).split(" ")[0] + "</span>";
         } else {
-          div.innerHTML = '<span class="rank">' + raw + '</span><span class="sub">flux</span>';
+          div.innerHTML =
+            '<span class="rank">' + short + '</span><span class="sub">flux</span>';
         }
         return div;
       }
 
-      function render(state) {
+      function render(s) {
+        state = s;
         const hand = document.getElementById("hand");
         hand.innerHTML = "";
-        (state.hand || []).forEach(function (c) {
+        const mine = s.active_seat === seat;
+        // Hand is current turn hand (visible on table too in Flip 7); show when our turn or always for awareness
+        (s.hand || []).forEach(function (c) {
           hand.appendChild(cardEl(c));
         });
-        document.getElementById("pad-meta").textContent =
-          "Turn charge: " + state.turnScore +
-          " · Active: " + state.activePlayer +
-          " · " + (state.status || "");
-      }
 
-      function mutate(fn) {
-        const state = Holo.load();
-        // Demo: pad drives whichever seat is active (ignore ?player for stub)
-        fn(state);
-        Holo.save(state);
-        render(state);
+        const can = s.can_act && mine;
+        document.getElementById("btn-hit").disabled = !can;
+        document.getElementById("btn-stay").disabled = !can;
+
+        const me = (s.players || []).find(function (p) { return p.seat === seat; });
+        document.getElementById("pad-meta").textContent =
+          (me ? me.name + " · score " + me.score : "Seat " + seat) +
+          " · turn charge " + (s.turn_score || 0) +
+          (s.shield ? " · SHIELD" : "") +
+          " · active S" + s.active_seat +
+          " · " + (s.status || "");
       }
 
       document.getElementById("btn-hit").addEventListener("click", function () {
-        mutate(Holo.applyHit);
+        client && client.hit(seat).catch(function (e) {
+          document.getElementById("pad-meta").textContent = String(e.message || e);
+        });
       });
       document.getElementById("btn-stay").addEventListener("click", function () {
-        mutate(Holo.applyStay);
+        client && client.stay(seat).catch(function (e) {
+          document.getElementById("pad-meta").textContent = String(e.message || e);
+        });
       });
-      document.getElementById("btn-reset").addEventListener("click", function () {
-        render(Holo.resetDemo());
+      document.getElementById("btn-new").addEventListener("click", function () {
+        client && client.newMatch().catch(function (e) {
+          document.getElementById("pad-meta").textContent = String(e.message || e);
+        });
       });
 
-      render(Holo.load());
-      Holo.subscribe(render);
-      setInterval(function () { render(Holo.load()); }, 800);
+      const conn = document.getElementById("conn");
+      client = Holo.connect({
+        role: "pad",
+        seat: seat,
+        onConn: function (ok) {
+          conn.textContent = ok ? "link OK · ws" : "link… (REST poll)";
+          conn.className = "conn " + (ok ? "ok" : "bad");
+        },
+        onState: render,
+        onError: function (err) {
+          document.getElementById("pad-meta").textContent = String(err);
+        },
+      });
     })();
   </script>
 </body>

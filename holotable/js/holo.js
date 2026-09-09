@@ -1,180 +1,194 @@
 /**
- * Reactor Overload — holotable stub shared state
- *
- * Demo sync: localStorage key `reactor-overload-holo` + storage events
- * so public table + datapad tabs can talk on the same origin.
- *
- * TODO: wire to flip7 Python rules engine (source of truth) via a tiny
- * bridge (WebSocket / SSE). This UI is chrome-only; no MQTT/actuators.
+ * Helios client — WebSocket state + REST fallback for Reactor Overload.
+ * Non-REACTOR stations are local mock demos (labeled).
  */
-
 (function (global) {
   "use strict";
 
-  const STORAGE_KEY = "reactor-overload-holo";
-  const CHANNEL = "reactor-overload-holo-bc";
-
-  const DEFAULT_STATE = {
-    phase: "idle",
-    activePlayer: "P1",
-    lastFlip: "—",
-    lastFlipLabel: "standby",
-    turnScore: 0,
-    scores: [
-      { id: "P1", name: "Pilot", pts: 0 },
-      { id: "P2", name: "Engineer", pts: 0 },
-      { id: "P3", name: "Gunner", pts: 0 },
-    ],
-    hand: ["3", "7", "0"],
-    status: "Reactor online · awaiting draw",
-    updatedAt: 0,
-  };
-
-  function load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return { ...DEFAULT_STATE, scores: DEFAULT_STATE.scores.map((s) => ({ ...s })), hand: [...DEFAULT_STATE.hand] };
-      const parsed = JSON.parse(raw);
-      return { ...DEFAULT_STATE, ...parsed };
-    } catch {
-      return { ...DEFAULT_STATE, scores: DEFAULT_STATE.scores.map((s) => ({ ...s })), hand: [...DEFAULT_STATE.hand] };
-    }
-  }
-
-  function save(state) {
-    state.updatedAt = Date.now();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    try {
-      if (global.__holoBc) {
-        global.__holoBc.postMessage({ type: "state", state });
-      }
-    } catch {
-      /* BroadcastChannel optional */
-    }
-  }
-
-  /** Reskin labels (chrome only) */
-  const LABELS = {
+  const RESKIN = {
     FREEZE: "Containment Lock",
     FLIP_THREE: "Overcharge Pulse",
     SECOND_CHANCE: "Neutralizer Shield",
-    HIT: "Draw Core",
-    STAY: "Bank Charge",
   };
 
-  function flipLabel(raw) {
-    if (raw == null || raw === "—") return "standby";
-    const key = String(raw).toUpperCase().replace(/\s+/g, "_");
-    if (LABELS[key]) return LABELS[key];
-    if (/^\d+$/.test(String(raw))) return "flux " + raw;
-    return String(raw);
+  function wsUrl(role, seat) {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    let q = "role=" + encodeURIComponent(role || "table");
+    if (seat !== undefined && seat !== null && seat !== "") q += "&seat=" + encodeURIComponent(seat);
+    return proto + "//" + location.host + "/ws?" + q;
   }
 
-  /** Stub deck draws for demo — NOT the real flip7 shuffle. */
-  const STUB_POOL = [
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12",
-    "FREEZE", "FLIP_THREE", "SECOND_CHANCE",
-  ];
+  function connect(opts) {
+    const role = opts.role || "table";
+    const seat = opts.seat;
+    const onState = opts.onState || function () {};
+    const onConn = opts.onConn || function () {};
+    const onError = opts.onError || function () {};
 
-  function stubDraw() {
-    return STUB_POOL[Math.floor(Math.random() * STUB_POOL.length)];
-  }
+    let ws = null;
+    let closed = false;
+    let retry = 0;
+    let pollTimer = null;
 
-  function applyHit(state) {
-    const card = stubDraw();
-    state.lastFlip = card;
-    state.lastFlipLabel = flipLabel(card);
-    state.phase = "live";
+    function startPoll() {
+      if (pollTimer) return;
+      pollTimer = setInterval(function () {
+        fetch("/api/state")
+          .then(function (r) { return r.json(); })
+          .then(onState)
+          .catch(function () {});
+      }, 900);
+    }
 
-    if (/^\d+$/.test(card)) {
-      const n = Number(card);
-      if (card !== "0" && state.hand.includes(card)) {
-        state.status = "DUPLICATE · core overload (bust stub) — Neutralizer Shield TODO";
-        state.turnScore = 0;
-        state.hand = [];
-      } else {
-        state.hand = [...state.hand, card];
-        state.turnScore += n;
-        state.status = "Flux +" + n + " · turn charge " + state.turnScore;
+    function stopPoll() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
       }
-    } else if (card === "FREEZE") {
-      state.status = "Containment Lock · banking " + state.turnScore;
-      bankTurn(state);
-    } else if (card === "FLIP_THREE") {
-      state.status = "Overcharge Pulse · three forced draws (stub: one shown)";
-    } else if (card === "SECOND_CHANCE") {
-      state.hand = [...state.hand, card];
-      state.status = "Neutralizer Shield armed";
     }
-    return state;
-  }
 
-  function bankTurn(state) {
-    const row = state.scores.find((s) => s.id === state.activePlayer);
-    if (row) row.pts += state.turnScore;
-    state.turnScore = 0;
-    state.hand = [];
-    state.phase = "banked";
-    rotatePlayer(state);
-  }
-
-  function applyStay(state) {
-    state.status = "Bank Charge · +" + state.turnScore + " to " + state.activePlayer;
-    bankTurn(state);
-    state.lastFlipLabel = "banked";
-    return state;
-  }
-
-  function rotatePlayer(state) {
-    const ids = state.scores.map((s) => s.id);
-    const i = ids.indexOf(state.activePlayer);
-    state.activePlayer = ids[(i + 1) % ids.length];
-  }
-
-  function resetDemo() {
-    const fresh = {
-      ...DEFAULT_STATE,
-      scores: DEFAULT_STATE.scores.map((s) => ({ ...s })),
-      hand: [...DEFAULT_STATE.hand],
-      status: "Reactor reset · demo state cleared",
-    };
-    save(fresh);
-    return fresh;
-  }
-
-  function subscribe(onChange) {
-    const handler = () => onChange(load());
-    window.addEventListener("storage", (e) => {
-      if (e.key === STORAGE_KEY) handler();
-    });
-    try {
-      const bc = new BroadcastChannel(CHANNEL);
-      global.__holoBc = bc;
-      bc.onmessage = (ev) => {
-        if (ev.data && ev.data.type === "state") onChange(ev.data.state);
+    function open() {
+      if (closed) return;
+      try {
+        ws = new WebSocket(wsUrl(role, seat));
+      } catch (e) {
+        onConn(false);
+        startPoll();
+        return;
+      }
+      ws.onopen = function () {
+        retry = 0;
+        onConn(true);
+        stopPoll();
       };
-    } catch {
-      /* ignore */
+      ws.onclose = function () {
+        onConn(false);
+        startPoll();
+        if (!closed) {
+          const wait = Math.min(5000, 400 * Math.pow(1.5, retry++));
+          setTimeout(open, wait);
+        }
+      };
+      ws.onerror = function () {
+        onConn(false);
+      };
+      ws.onmessage = function (ev) {
+        let msg;
+        try {
+          msg = JSON.parse(ev.data);
+        } catch (e) {
+          return;
+        }
+        if (msg.type === "state" && msg.state) onState(msg.state);
+        if (msg.type === "error") onError(msg.error || "error");
+      };
     }
-    // Same-tab updates: poll lightly so pad + table in same process stay fresh if needed
-    return handler;
+
+    function send(obj) {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify(obj));
+        return true;
+      }
+      return false;
+    }
+
+    function post(path, body) {
+      return fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {}),
+      }).then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok) throw new Error(j.error || r.statusText);
+          onState(j);
+          return j;
+        });
+      });
+    }
+
+    function hit(s) {
+      const seatNum = s !== undefined ? s : seat;
+      if (!send({ type: "hit", seat: seatNum })) {
+        return post("/api/hit", { seat: seatNum });
+      }
+      return Promise.resolve();
+    }
+
+    function stay(s) {
+      const seatNum = s !== undefined ? s : seat;
+      if (!send({ type: "stay", seat: seatNum })) {
+        return post("/api/stay", { seat: seatNum });
+      }
+      return Promise.resolve();
+    }
+
+    function newMatch(players) {
+      const payload = { type: "new" };
+      if (players) payload.players = players;
+      if (!send(payload)) {
+        return post("/api/new", players ? { players: players } : {});
+      }
+      return Promise.resolve();
+    }
+
+    open();
+    fetch("/api/state").then(function (r) { return r.json(); }).then(onState).catch(function () {});
+
+    return {
+      hit: hit,
+      stay: stay,
+      newMatch: newMatch,
+      close: function () {
+        closed = true;
+        stopPoll();
+        if (ws) try { ws.close(); } catch (e) {}
+      },
+    };
   }
 
-  function qsPlayer() {
-    const p = new URLSearchParams(location.search).get("player");
-    return p || "P1";
+  function cardShort(label) {
+    if (!label || label === "—") return "—";
+    if (label === "Containment Lock" || label === "FREEZE") return "LOCK";
+    if (label === "Overcharge Pulse" || label === "FLIP_THREE") return "PULSE";
+    if (label === "Neutralizer Shield" || label === "SECOND_CHANCE") return "SHIELD";
+    return String(label);
   }
+
+  function isActionLabel(label) {
+    return /Lock|Pulse|Shield|FREEZE|FLIP|SECOND/i.test(String(label));
+  }
+
+  /** Station mock helpers (local only) */
+  const Stations = {
+    weatherTick: function (root) {
+      const kp = (Math.random() * 7).toFixed(1);
+      const solar = (Math.random() * 100).toFixed(0);
+      const kpEl = root.querySelector("[data-kp]");
+      const solEl = root.querySelector("[data-solar]");
+      const bar = root.querySelector("[data-solar-bar]");
+      if (kpEl) kpEl.textContent = kp;
+      if (solEl) solEl.textContent = solar + "%";
+      if (bar) bar.style.width = solar + "%";
+      const blocks = root.querySelectorAll(".kp-blocks i");
+      blocks.forEach(function (el, i) {
+        el.style.height = 20 + ((Number(kp) * 10 + i * 7) % 70) + "%";
+      });
+    },
+    bioTick: function (root) {
+      root.querySelectorAll(".vial").forEach(function (v, i) {
+        const alert = Math.random() < 0.12;
+        v.classList.toggle("alert", alert);
+        const st = v.querySelector(".st");
+        if (st) st.textContent = alert ? "ANOMALY" : "STABLE";
+      });
+    },
+  };
 
   global.Holo = {
-    STORAGE_KEY,
-    LABELS,
-    load,
-    save,
-    flipLabel,
-    applyHit,
-    applyStay,
-    resetDemo,
-    subscribe,
-    qsPlayer,
+    RESKIN: RESKIN,
+    connect: connect,
+    cardShort: cardShort,
+    isActionLabel: isActionLabel,
+    Stations: Stations,
   };
 })(typeof window !== "undefined" ? window : globalThis);

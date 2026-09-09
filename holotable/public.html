@@ -2,75 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Reactor Overload — Holotable</title>
-  <link rel="stylesheet" href="css/holo.css" />
+  <meta http-equiv="refresh" content="0; url=index.html#REACTOR" />
+  <title>Helios public table</title>
+  <link rel="canonical" href="index.html#REACTOR" />
 </head>
-<body>
-  <div class="holo-shell">
-    <header class="holo-header">
-      <h1>Reactor Overload</h1>
-      <span class="tag">PEPPER’S GHOST · PUBLIC TABLE</span>
-    </header>
-
-    <div class="table-layout">
-      <section class="panel reactor" aria-label="Reactor core">
-        <div class="reactor-core">
-          <span class="core-label">Turn charge</span>
-          <span class="core-value" id="turn-score">0</span>
-        </div>
-        <div class="last-flip">
-          <div class="flip-card" id="last-flip">—</div>
-          <div class="hint" id="last-flip-label">standby</div>
-        </div>
-      </section>
-
-      <aside class="panel" aria-label="Crew scores">
-        <h2>Crew scores</h2>
-        <ul class="scores" id="scores"></ul>
-        <p class="legend">
-          First to <strong>200</strong> wins.<br />
-          Freeze → <strong>Containment Lock</strong><br />
-          Flip 3 → <strong>Overcharge Pulse</strong><br />
-          Second Chance → <strong>Neutralizer Shield</strong>
-        </p>
-      </aside>
-    </div>
-
-    <div class="status-bar" id="status">Reactor online · awaiting draw</div>
-
-    <p class="todo">
-      Stub UI · open <a href="pad.html">pad.html</a> in another tab for datapad actions.
-      Shared via localStorage. <!-- TODO: bridge to flip7 Python engine -->
-    </p>
-  </div>
-  <script src="js/holo.js"></script>
-  <script>
-    (function () {
-      function render(state) {
-        document.getElementById("turn-score").textContent = state.turnScore;
-        document.getElementById("last-flip").textContent =
-          state.lastFlip === "FREEZE" ? "LOCK"
-          : state.lastFlip === "FLIP_THREE" ? "PULSE"
-          : state.lastFlip === "SECOND_CHANCE" ? "SHIELD"
-          : state.lastFlip;
-        document.getElementById("last-flip-label").textContent = state.lastFlipLabel || Holo.flipLabel(state.lastFlip);
-        document.getElementById("status").textContent = state.status;
-        const ul = document.getElementById("scores");
-        ul.innerHTML = "";
-        state.scores.forEach(function (s) {
-          const li = document.createElement("li");
-          if (s.id === state.activePlayer) li.className = "active";
-          li.innerHTML =
-            '<span class="name">' + s.name + " (" + s.id + ")</span>" +
-            '<span class="pts">' + s.pts + "</span>";
-          ul.appendChild(li);
-        });
-      }
-      render(Holo.load());
-      Holo.subscribe(render);
-      setInterval(function () { render(Holo.load()); }, 800);
-    })();
-  </script>
+<body style="background:#000;color:#00A896;font-family:system-ui;padding:2rem">
+  <p>Redirecting to Helios public table… <a href="index.html#REACTOR">index.html#REACTOR</a></p>
 </body>
 </html>
