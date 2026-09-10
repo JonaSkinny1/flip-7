@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Helios Datapad — Reactor Overload</title>
+  <title>Helios Datapad — Table Games</title>
   <link rel="stylesheet" href="css/holo.css" />
 </head>
 <body>
@@ -13,9 +13,22 @@
       <span class="tag" id="player-tag">PRIVATE</span>
     </header>
 
+    <div class="game-picker panel" style="margin-bottom:0.75rem">
+      <h2>Game</h2>
+      <div class="picker-row">
+        <button type="button" class="pick active" data-game="flip7" id="pick-flip7">
+          Reactor Overload
+        </button>
+        <button type="button" class="pick" data-game="sabacc" id="pick-sabacc">
+          Sabacc
+        </button>
+      </div>
+    </div>
+
     <section class="panel" aria-label="Hand">
-      <h2>Hand</h2>
+      <h2 id="hand-heading">Hand</h2>
       <div class="hand" id="hand"></div>
+      <p class="legend" id="pad-sum" hidden></p>
     </section>
 
     <div class="actions">
@@ -27,7 +40,7 @@
     <p class="pad-meta" id="pad-meta">Connecting…</p>
     <p class="conn" id="conn" style="text-align:center;margin-top:0.5rem">…</p>
 
-    <p class="todo">
+    <p class="todo" id="pad-todo">
       Containment Lock / Overcharge Pulse / Neutralizer Shield resolve in the
       Python <code>flip7</code> engine. Public table:
       <a href="index.html#REACTOR">Helios REACTOR</a>.
@@ -44,15 +57,25 @@
       let state = null;
       let client = null;
 
-      function cardEl(label) {
+      function cardEl(label, sabacc) {
         const div = document.createElement("div");
         const action = Holo.isActionLabel(label);
-        div.className = "card" + (action ? " action" : "");
+        let cls = "card";
+        if (sabacc) {
+          const pol = Holo.cardPolarity(label);
+          if (pol) cls += " " + pol;
+        } else if (action) {
+          cls += " action";
+        }
+        div.className = cls;
         const short = Holo.cardShort(label);
-        if (action) {
+        if (!sabacc && action) {
           div.innerHTML =
             '<span class="rank">' + short + "</span>" +
             '<span class="sub">' + String(label).split(" ")[0] + "</span>";
+        } else if (sabacc) {
+          div.innerHTML =
+            '<span class="rank">' + short + '</span><span class="sub">spike</span>';
         } else {
           div.innerHTML =
             '<span class="rank">' + short + '</span><span class="sub">flux</span>';
@@ -60,26 +83,64 @@
         return div;
       }
 
+      function syncPicker(rules) {
+        const id = rules === "sabacc" ? "sabacc" : "flip7";
+        document.querySelectorAll(".pick").forEach(function (btn) {
+          btn.classList.toggle("active", btn.getAttribute("data-game") === id);
+        });
+      }
+
       function render(s) {
         state = s;
+        const sabacc = Holo.isSabacc(s);
+        syncPicker(sabacc ? "sabacc" : "flip7");
+
+        document.getElementById("btn-hit").textContent = sabacc
+          ? "Draw · Hit"
+          : "Hit · Draw Core";
+        document.getElementById("btn-stay").textContent = sabacc
+          ? "Stand · Bank"
+          : "Stay · Bank Charge";
+        document.getElementById("pad-todo").innerHTML = sabacc
+          ? "Sabacc house rules (Spike toward 0). Bomb-out if |sum| &gt; 23. " +
+            "Fan/home private table — not a licensed Lucasfilm product. " +
+            'Public: <a href="index.html#REACTOR">Helios REACTOR</a>.'
+          : "Containment Lock / Overcharge Pulse / Neutralizer Shield resolve in the " +
+            "Python <code>flip7</code> engine. Public table: " +
+            '<a href="index.html#REACTOR">Helios REACTOR</a>. ' +
+            "Seat via <code>?seat=0</code>, <code>?seat=1</code>, …";
+
         const hand = document.getElementById("hand");
         hand.innerHTML = "";
-        const mine = s.active_seat === seat;
-        // Hand is current turn hand (visible on table too in Flip 7); show when our turn or always for awareness
         (s.hand || []).forEach(function (c) {
-          hand.appendChild(cardEl(c));
+          hand.appendChild(cardEl(c, sabacc));
         });
 
-        const can = s.can_act && mine;
+        const sumEl = document.getElementById("pad-sum");
+        if (sabacc) {
+          sumEl.hidden = false;
+          const hs = s.hand_sum || 0;
+          sumEl.textContent =
+            "Sum " + (hs > 0 ? "+" : "") + hs +
+            " · stand worth " + (s.turn_score || 0) +
+            " · race to " + (s.target || 100);
+        } else {
+          sumEl.hidden = true;
+        }
+
+        const can = s.can_act && s.active_seat === seat;
         document.getElementById("btn-hit").disabled = !can;
         document.getElementById("btn-stay").disabled = !can;
 
         const me = (s.players || []).find(function (p) { return p.seat === seat; });
         document.getElementById("pad-meta").textContent =
           (me ? me.name + " · score " + me.score : "Seat " + seat) +
-          " · turn charge " + (s.turn_score || 0) +
-          (s.shield ? " · SHIELD" : "") +
+          (sabacc
+            ? " · sum " + ((s.hand_sum > 0 ? "+" : "") + (s.hand_sum || 0))
+            : " · turn charge " + (s.turn_score || 0)) +
+          (!sabacc && s.shield ? " · SHIELD" : "") +
           " · active S" + s.active_seat +
+          " · " + (s.title || "") +
           " · " + (s.status || "");
       }
 
@@ -96,6 +157,13 @@
       document.getElementById("btn-new").addEventListener("click", function () {
         client && client.newMatch().catch(function (e) {
           document.getElementById("pad-meta").textContent = String(e.message || e);
+        });
+      });
+      document.querySelector(".game-picker").addEventListener("click", function (e) {
+        const btn = e.target.closest("button[data-game]");
+        if (!btn || !client) return;
+        client.setGame(btn.getAttribute("data-game")).catch(function (err) {
+          document.getElementById("pad-meta").textContent = String(err.message || err);
         });
       });
 

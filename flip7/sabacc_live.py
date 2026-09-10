@@ -1,4 +1,4 @@
-"""Live multiplayer match + Reactor Overload reskin labels for Helios."""
+"""Live Sabacc match for Helios REACTOR station (same hit/stay surface as LiveMatch)."""
 
 from __future__ import annotations
 
@@ -6,38 +6,19 @@ import random
 import threading
 from typing import Any, Callable, Dict, List, Optional
 
-from .game import Flip7Game, Player
-from .turn import TurnController
-
-# UI chrome only — engine still uses FREEZE / FLIP_THREE / SECOND_CHANCE
-RESKIN = {
-    "FREEZE": "Containment Lock",
-    "FLIP_THREE": "Overcharge Pulse",
-    "SECOND_CHANCE": "Neutralizer Shield",
-}
+from .sabacc import (
+    SabaccGame,
+    SabaccPlayer,
+    SabaccTurnController,
+    display_sabacc_card,
+    hand_total,
+)
 
 DEFAULT_CREW = ["Pilot", "Engineer", "Gunner", "Science"]
 
 
-def display_card(card: Any) -> str:
-    if card is None:
-        return "—"
-    if isinstance(card, str):
-        return RESKIN.get(card, card)
-    return str(card)
-
-
-def display_log_line(line: str) -> str:
-    out = line
-    for raw, pretty in RESKIN.items():
-        out = out.replace(raw, pretty)
-    out = out.replace("Flip 7!", "Reactor Overload!")
-    out = out.replace("Shield armed", "Neutralizer Shield armed")
-    return out
-
-
-class LiveMatch:
-    """Thread-safe Flip 7 match for the Helios REACTOR station."""
+class SabaccLiveMatch:
+    """Thread-safe Sabacc match — API mirrors LiveMatch (hit / stay / new_match / snapshot)."""
 
     def __init__(
         self,
@@ -45,13 +26,17 @@ class LiveMatch:
         rng: random.Random | None = None,
     ):
         names = player_names or DEFAULT_CREW[:2]
+        if not 2 <= len(names) <= 4:
+            names = (names + DEFAULT_CREW)[: max(2, min(4, len(names) or 2))]
+            if len(names) < 2:
+                names = DEFAULT_CREW[:2]
         self._lock = threading.RLock()
         self._listeners: List[Callable[[dict], None]] = []
-        self.game = Flip7Game(names, rng=rng)
-        self.turn: Optional[TurnController] = None
-        self.phase = "lobby"  # lobby | choosing | resolving | between | won
-        self.winner: Optional[Player] = None
-        self.status = "Helios REACTOR online — start match"
+        self.game = SabaccGame(names[:4] if len(names) > 4 else names, rng=rng)
+        self.turn: Optional[SabaccTurnController] = None
+        self.phase = "lobby"
+        self.winner: Optional[SabaccPlayer] = None
+        self.status = "Helios Sabacc online — Spike toward 0"
         self.match_id = 1
         self._begin_turn_unlocked()
 
@@ -77,12 +62,14 @@ class LiveMatch:
     def new_match(self, player_names: Optional[List[str]] = None, seed: Optional[int] = None) -> dict:
         with self._lock:
             names = player_names or [p.name for p in self.game.players]
+            if not 2 <= len(names) <= 4:
+                raise ValueError("Sabacc needs 2–4 player names")
             rng = random.Random(seed) if seed is not None else random.Random()
-            self.game = Flip7Game(names, rng=rng)
+            self.game = SabaccGame(names, rng=rng)
             self.turn = None
             self.winner = None
             self.match_id += 1
-            self.status = "New reactor cycle"
+            self.status = "New Sabacc shuffle"
             self._begin_turn_unlocked()
             snap = self.snapshot()
         self._notify()
@@ -103,7 +90,7 @@ class LiveMatch:
         with self._lock:
             self._require_active(seat)
             if self.phase != "choosing" or not self.turn or self.turn.done:
-                raise RuntimeError("Cannot bank now")
+                raise RuntimeError("Cannot stand now")
             result = self.turn.stay()
             self._after_action(result)
             snap = self.snapshot()
@@ -117,18 +104,18 @@ class LiveMatch:
             raise RuntimeError("Not your turn")
 
     def _begin_turn_unlocked(self) -> None:
-        """Start turns until someone must choose or the match ends."""
         for _ in range(64):
             if self.winner:
                 self.phase = "won"
                 return
-            self.turn = TurnController(game=self.game)
+            self.turn = SabaccTurnController(game=self.game)
             self.phase = "resolving"
             result = self.turn.start()
             if result is None:
                 self.phase = "choosing"
                 p = self.game.players[self.game.current]
-                self.status = f"{p.name}'s turn — Draw Core or Bank Charge"
+                total = self.turn.hand_sum
+                self.status = f"{p.name}'s turn — sum {total:+d} · Draw or Stand"
                 return
             self._settle_result(result)
             if self.winner:
@@ -137,23 +124,20 @@ class LiveMatch:
         self.phase = "choosing"
 
     def _settle_result(self, result) -> None:
-        lines = [display_log_line(x) for x in result.log[-4:]]
-        tag = (
-            "bust"
-            if result.busted
-            else "Containment Lock"
-            if result.froze
-            else "Reactor Overload"
-            if result.flip7
-            else "banked"
-        )
+        lines = list(result.log[-4:])
+        if result.busted:
+            tag = "bomb-out"
+        elif result.pure:
+            tag = "Pure Sabacc"
+        else:
+            tag = f"sum {result.total:+d}"
         winner = self.game.apply_turn(result)
         self.status = f"+{result.points} ({tag}) · " + " · ".join(lines[-2:])
         self.turn = None
         if winner:
             self.winner = winner
             self.phase = "won"
-            self.status = f"{winner.name} wins with {winner.score} — Reactor Overload complete"
+            self.status = f"{winner.name} wins with {winner.score} — Sabacc complete"
             return
         self.phase = "between"
 
@@ -162,7 +146,7 @@ class LiveMatch:
             assert self.turn is not None
             self.phase = "choosing"
             p = self.game.players[self.game.current]
-            self.status = f"{p.name}'s turn — Draw Core or Bank Charge"
+            self.status = f"{p.name}'s turn — sum {self.turn.hand_sum:+d} · Draw or Stand"
             return
         self._settle_result(result)
         if not self.winner:
@@ -174,33 +158,42 @@ class LiveMatch:
             t = self.turn
             hand = list(t.hand) if t and not t.done else []
             last = t.last_card if t else None
+            hand_sum = hand_total(hand) if hand else (t.hand_sum if t and not t.done else 0)
             return {
                 "station": "REACTOR",
-                "title": "Reactor Overload",
-                "rules": "flip7",
-                "game": "flip7",
+                "title": "Sabacc",
+                "rules": "sabacc",
+                "game": "sabacc",
                 "match_id": self.match_id,
                 "phase": self.phase,
-                "target": Flip7Game.TARGET,
+                "target": SabaccGame.TARGET,
+                "bomb_limit": SabaccGame.BOMB_LIMIT,
+                "goal": 0,
                 "status": self.status,
                 "active_seat": g.current,
                 "active_name": g.players[g.current].name if g.players else "",
                 "winner": None
                 if not self.winner
-                else {"seat": next(i for i, p in enumerate(g.players) if p is self.winner), "name": self.winner.name, "score": self.winner.score},
+                else {
+                    "seat": next(i for i, p in enumerate(g.players) if p is self.winner),
+                    "name": self.winner.name,
+                    "score": self.winner.score,
+                },
                 "players": [
                     {"seat": i, "name": p.name, "score": p.score, "active": i == g.current}
                     for i, p in enumerate(g.players)
                 ],
-                "hand": [display_card(c) for c in hand],
+                "hand": [display_sabacc_card(c) for c in hand],
                 "hand_raw": hand,
+                "hand_sum": hand_sum,
                 "turn_score": t.turn_score if t and not t.done else 0,
-                "shield": bool(t.shield) if t and not t.done else False,
-                "forced_draws": t.forced_draws if t and not t.done else 0,
-                "last_flip": display_card(last),
+                "shield": False,
+                "forced_draws": 0,
+                "last_flip": display_sabacc_card(last) if last is not None else "—",
                 "last_flip_raw": last,
-                "log": [display_log_line(x) for x in (t.log[-8:] if t else [])],
+                "log": list(t.log[-8:] if t else []),
                 "can_act": self.phase == "choosing" and not self.winner,
-                "reskin": dict(RESKIN),
+                "reskin": {},
                 "deck_remaining": len(g.deck),
+                "disclaimer": "Fan/home private table — not a licensed Lucasfilm product",
             }

@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Helios — Ground Station Holotable</title>
+  <title>Helios — Ohio Outpost // Sol-3 Holotable</title>
   <link rel="stylesheet" href="css/holo.css" />
 </head>
 <body class="helios">
   <header class="helios-top">
     <div class="helios-brand">
       <span class="name">Helios</span>
-      <span class="sub">Youngstown ground station · Pepper’s Ghost table</span>
+      <span class="sub">Ohio Outpost // Sol-3 · Pepper’s Ghost table</span>
     </div>
     <nav class="station-bar" aria-label="Stations">
       <button type="button" data-station="WEATHER" class="active"><span class="key">1</span>Weather</button>
@@ -61,11 +61,25 @@
 
     <!-- REACTOR -->
     <section class="station-panel" id="station-REACTOR" data-station-panel="REACTOR">
+      <div class="game-picker panel" id="game-picker" aria-label="Game picker">
+        <h2>Table game</h2>
+        <div class="picker-row">
+          <button type="button" class="pick active" data-game="flip7" id="pick-flip7">
+            Reactor Overload<br /><span class="pick-sub">Flip 7 · race to 200</span>
+          </button>
+          <button type="button" class="pick" data-game="sabacc" id="pick-sabacc">
+            Sabacc<br /><span class="pick-sub">Spike house · toward 0</span>
+          </button>
+        </div>
+        <p class="legend" id="game-disclaimer">
+          Fan/home private table. Sabacc here is a simplified house game — not a licensed Lucasfilm product.
+        </p>
+      </div>
       <div class="reactor-grid">
         <div class="panel reactor-core-wrap">
-          <h2>Reactor Overload · Flip 7 rules</h2>
+          <h2 id="reactor-title">Reactor Overload · Flip 7 rules</h2>
           <div class="reactor-core" id="reactor-core">
-            <span class="core-label">Turn charge</span>
+            <span class="core-label" id="core-label">Turn charge</span>
             <span class="core-value" id="turn-score">0</span>
           </div>
           <div class="last-flip">
@@ -73,11 +87,12 @@
             <div class="flip-hint" id="last-hint">awaiting flux</div>
           </div>
           <div class="hand-row" id="public-hand"></div>
+          <p class="legend" id="hand-sum-line" hidden>Hand sum: <strong id="hand-sum">0</strong></p>
         </div>
         <aside class="panel">
           <h2>Crew scores</h2>
           <ul class="scores" id="scores"></ul>
-          <p class="legend">
+          <p class="legend" id="rules-legend">
             First to <strong>200</strong>.<br />
             Freeze → <strong>Containment Lock</strong><br />
             Flip 3 → <strong>Overcharge Pulse</strong><br />
@@ -92,6 +107,7 @@
         <a href="pad.html?seat=0">pad seat 0</a> /
         <a href="pad.html?seat=1">seat 1</a>
         (more seats if match has them). Keys <kbd>1</kbd>–<kbd>5</kbd> switch stations.
+        Use the game picker above to switch Flip 7 ↔ Sabacc.
       </p>
     </section>
 
@@ -122,13 +138,29 @@
     </section>
   </main>
 
-  <footer class="foot-hint">HELIOS · software holotable · no actuators / MQTT in this build</footer>
+  <footer class="foot-hint">HELIOS · Ohio ground station · software holotable · no actuators / MQTT in this build</footer>
 
   <script src="js/holo.js"></script>
   <script>
     (function () {
       const STATIONS = ["WEATHER", "NAV", "REACTOR", "BIO", "COMMS"];
       let current = "WEATHER";
+      let client = null;
+      let lastRules = "flip7";
+
+      const FLIP7_LEGEND =
+        "First to <strong>200</strong>.<br />" +
+        "Freeze → <strong>Containment Lock</strong><br />" +
+        "Flip 3 → <strong>Overcharge Pulse</strong><br />" +
+        "Second Chance → <strong>Neutralizer Shield</strong><br />" +
+        "Seven unique → <strong>Reactor Overload</strong> (+15)";
+
+      const SABACC_LEGEND =
+        "Goal: hand total nearest <strong>0</strong> (Spike).<br />" +
+        "Bomb-out if <strong>|sum| &gt; 23</strong>.<br />" +
+        "Stand scores <strong>24 − |sum|</strong> (Pure Sabacc = 24).<br />" +
+        "First to <strong>100</strong>. 2–4 players.<br />" +
+        "<em>House rules · not Lucasfilm licensed</em>";
 
       function showStation(id) {
         current = id;
@@ -191,16 +223,46 @@
       // Reactor live state
       const conn = document.getElementById("conn");
 
+      function syncPicker(rules) {
+        lastRules = rules === "sabacc" ? "sabacc" : "flip7";
+        document.querySelectorAll(".pick").forEach(function (btn) {
+          btn.classList.toggle("active", btn.getAttribute("data-game") === lastRules);
+        });
+      }
+
       function renderReactor(state) {
-        document.getElementById("turn-score").textContent = state.turn_score;
+        const sabacc = Holo.isSabacc(state);
+        syncPicker(sabacc ? "sabacc" : "flip7");
+
+        document.getElementById("reactor-title").textContent = sabacc
+          ? "Sabacc · Spike house rules"
+          : "Reactor Overload · Flip 7 rules";
+        document.getElementById("core-label").textContent = sabacc
+          ? (sabacc && state.hand_sum !== undefined ? "Hand sum" : "Potential")
+          : "Turn charge";
+        document.getElementById("turn-score").textContent = sabacc
+          ? (state.hand_sum !== undefined ? (state.hand_sum > 0 ? "+" : "") + state.hand_sum : state.turn_score)
+          : state.turn_score;
+        document.getElementById("rules-legend").innerHTML = sabacc ? SABACC_LEGEND : FLIP7_LEGEND;
+
+        const sumLine = document.getElementById("hand-sum-line");
+        if (sabacc) {
+          sumLine.hidden = false;
+          const hs = state.hand_sum || 0;
+          document.getElementById("hand-sum").textContent = (hs > 0 ? "+" : "") + hs +
+            " · stand worth " + (state.turn_score || 0);
+        } else {
+          sumLine.hidden = true;
+        }
+
         document.getElementById("last-flip").textContent = Holo.cardShort(state.last_flip);
         document.getElementById("last-hint").textContent =
           state.last_flip && state.last_flip !== "—"
-            ? state.last_flip + (state.shield ? " · Neutralizer Shield armed" : "")
-            : "awaiting flux";
+            ? state.last_flip + (!sabacc && state.shield ? " · Neutralizer Shield armed" : "")
+            : (sabacc ? "awaiting draw" : "awaiting flux");
         document.getElementById("status").textContent = state.status || "";
         const core = document.getElementById("reactor-core");
-        core.classList.toggle("bust", /bust/i.test(state.status || ""));
+        core.classList.toggle("bust", /bust|bomb/i.test(state.status || ""));
 
         const ul = document.getElementById("scores");
         ul.innerHTML = "";
@@ -217,13 +279,29 @@
         hand.innerHTML = "";
         (state.hand || []).forEach(function (c) {
           const el = document.createElement("div");
-          el.className = "mini-card" + (Holo.isActionLabel(c) ? " action" : "");
+          let cls = "mini-card";
+          if (sabacc) {
+            const pol = Holo.cardPolarity(c);
+            if (pol) cls += " " + pol;
+          } else if (Holo.isActionLabel(c)) {
+            cls += " action";
+          }
+          el.className = cls;
           el.textContent = Holo.cardShort(c);
           hand.appendChild(el);
         });
       }
 
-      Holo.connect({
+      document.getElementById("game-picker").addEventListener("click", function (e) {
+        const btn = e.target.closest("button[data-game]");
+        if (!btn || !client) return;
+        const game = btn.getAttribute("data-game");
+        client.setGame(game).catch(function (err) {
+          document.getElementById("status").textContent = String(err.message || err);
+        });
+      });
+
+      client = Holo.connect({
         role: "table",
         onConn: function (ok) {
           conn.textContent = ok ? "link OK · ws" : "link… (REST poll)";

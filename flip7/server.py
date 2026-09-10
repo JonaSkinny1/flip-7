@@ -1,7 +1,7 @@
 """Helios holotable server — static UI + REST + WebSocket broadcast.
 
 Software only (no actuators / MQTT). Serves the five-station Helios shell;
-REACTOR station runs live Flip 7 / Reactor Overload via flip7.live.LiveMatch.
+REACTOR station runs Flip 7 / Reactor Overload or Sabacc via a game picker.
 """
 
 from __future__ import annotations
@@ -14,31 +14,84 @@ import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 
 from .live import DEFAULT_CREW, LiveMatch
+from .sabacc_live import SabaccLiveMatch
 from . import wsutil
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "holotable"
 
+MatchType = Union[LiveMatch, SabaccLiveMatch]
+
 _state_lock = threading.Lock()
-_match: LiveMatch = LiveMatch(DEFAULT_CREW[:2])
+_game_id = "flip7"
+_match: MatchType = LiveMatch(DEFAULT_CREW[:2])
 _clients: Set["WsClient"] = set()
 _clients_lock = threading.Lock()
 
 
-def get_match() -> LiveMatch:
+def get_match() -> MatchType:
     with _state_lock:
         return _match
 
 
-def set_match(m: LiveMatch) -> None:
-    global _match
+def get_game_id() -> str:
+    with _state_lock:
+        return _game_id
+
+
+def set_match(m: MatchType, game_id: Optional[str] = None) -> None:
+    global _match, _game_id
     with _state_lock:
         _match = m
+        if game_id is not None:
+            _game_id = game_id
+        elif isinstance(m, SabaccLiveMatch):
+            _game_id = "sabacc"
+        else:
+            _game_id = "flip7"
     m.on_update(_on_match_update)
     _on_match_update(m.snapshot())
+
+
+def switch_game(
+    game: str,
+    player_names: Optional[List[str]] = None,
+    seed: Optional[int] = None,
+) -> dict:
+    """Start a new match of flip7 or sabacc on the REACTOR table."""
+    g = (game or "").strip().lower()
+    if g in ("flip7", "reactor", "reactor_overload", "flip"):
+        g = "flip7"
+    elif g in ("sabacc", "spike", "corellian"):
+        g = "sabacc"
+    else:
+        raise ValueError("Unknown game — use flip7 or sabacc")
+
+    names = player_names
+    if names is None:
+        cur = get_match()
+        names = [p.name for p in cur.game.players]
+
+    import random
+
+    rng = random.Random(seed) if seed is not None else random.Random()
+
+    if g == "sabacc":
+        if len(names) > 4:
+            names = names[:4]
+        if len(names) < 2:
+            names = DEFAULT_CREW[:2]
+        m: MatchType = SabaccLiveMatch(names, rng=rng)
+    else:
+        if not (2 <= len(names) <= 6):
+            names = DEFAULT_CREW[: max(2, min(4, len(names) or 2))]
+        m = LiveMatch(names, rng=rng)
+
+    set_match(m, game_id=g)
+    return m.snapshot()
 
 
 class WsClient:
@@ -82,7 +135,7 @@ def json_bytes(obj: Any, code: int = 200) -> tuple[int, bytes, str]:
 
 
 class HeliosHandler(BaseHTTPRequestHandler):
-    server_version = "HeliosFlip7/0.2"
+    server_version = "HeliosFlip7/0.3"
 
     def log_message(self, fmt: str, *args) -> None:
         if os.environ.get("HELIOS_VERBOSE"):
@@ -110,7 +163,31 @@ class HeliosHandler(BaseHTTPRequestHandler):
             self._send(*json_bytes(get_match().snapshot()))
             return
         if path == "/api/health":
-            self._send(*json_bytes({"ok": True, "shell": "HELIOS", "reactor": "Reactor Overload"}))
+            self._send(
+                *json_bytes(
+                    {
+                        "ok": True,
+                        "shell": "HELIOS",
+                        "outpost": "Ohio Outpost // Sol-3",
+                        "reactor": "Reactor Overload",
+                        "games": ["flip7", "sabacc"],
+                        "active_game": get_game_id(),
+                    }
+                )
+            )
+            return
+        if path == "/api/games":
+            self._send(
+                *json_bytes(
+                    {
+                        "games": [
+                            {"id": "flip7", "title": "Reactor Overload (Flip 7)"},
+                            {"id": "sabacc", "title": "Sabacc (Spike house rules)"},
+                        ],
+                        "active": get_game_id(),
+                    }
+                )
+            )
             return
 
         self._static(path)
@@ -128,11 +205,31 @@ class HeliosHandler(BaseHTTPRequestHandler):
 
         match = get_match()
         try:
+            if path in ("/api/game", "/api/reactor/game"):
+                names = body.get("players") or body.get("names")
+                seed = body.get("seed")
+                game = body.get("game") or body.get("rules") or body.get("id")
+                snap = switch_game(str(game), player_names=names, seed=seed)
+                self._send(*json_bytes(snap))
+                return
             if path in ("/api/new", "/api/reactor/new"):
                 names = body.get("players") or body.get("names")
                 seed = body.get("seed")
-                if names is not None and not (2 <= len(names) <= 6):
-                    raise ValueError("Need 2–6 player names")
+                # Optional game switch on new
+                if body.get("game") or body.get("rules"):
+                    snap = switch_game(
+                        str(body.get("game") or body.get("rules")),
+                        player_names=names,
+                        seed=seed,
+                    )
+                    self._send(*json_bytes(snap))
+                    return
+                if names is not None:
+                    if get_game_id() == "sabacc":
+                        if not (2 <= len(names) <= 4):
+                            raise ValueError("Sabacc needs 2–4 player names")
+                    elif not (2 <= len(names) <= 6):
+                        raise ValueError("Need 2–6 player names")
                 snap = match.new_match(player_names=names, seed=seed)
                 self._send(*json_bytes(snap))
                 return
@@ -243,7 +340,20 @@ def _dispatch_ws(client: WsClient, msg: dict) -> None:
             seat = int(msg.get("seat", client.seat if client.seat is not None else 0))
             match.stay(seat)
         elif mtype == "new":
-            match.new_match(player_names=msg.get("players"), seed=msg.get("seed"))
+            if msg.get("game") or msg.get("rules"):
+                switch_game(
+                    str(msg.get("game") or msg.get("rules")),
+                    player_names=msg.get("players"),
+                    seed=msg.get("seed"),
+                )
+            else:
+                match.new_match(player_names=msg.get("players"), seed=msg.get("seed"))
+        elif mtype == "set_game":
+            switch_game(
+                str(msg.get("game") or msg.get("rules") or ""),
+                player_names=msg.get("players"),
+                seed=msg.get("seed"),
+            )
         elif mtype == "ping":
             client.send_json({"type": "pong"})
         elif mtype == "get_state":
@@ -256,15 +366,24 @@ def _dispatch_ws(client: WsClient, msg: dict) -> None:
 
 
 def main(argv: Optional[List[str]] = None) -> None:
-    parser = argparse.ArgumentParser(description="Helios holotable — Reactor Overload server")
+    parser = argparse.ArgumentParser(description="Helios holotable — Flip 7 / Sabacc server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--players", type=int, default=2, help="2–4 crew seats at boot")
+    parser.add_argument(
+        "--game",
+        default="flip7",
+        choices=("flip7", "sabacc"),
+        help="Boot game on REACTOR (default flip7)",
+    )
     args = parser.parse_args(argv)
 
     n = max(2, min(4, args.players))
     names = DEFAULT_CREW[:n] if n <= len(DEFAULT_CREW) else [f"Crew {i+1}" for i in range(n)]
-    set_match(LiveMatch(names))
+    if args.game == "sabacc":
+        set_match(SabaccLiveMatch(names), game_id="sabacc")
+    else:
+        set_match(LiveMatch(names), game_id="flip7")
 
     httpd = ThreadingHTTPServer((args.host, args.port), HeliosHandler)
     httpd.daemon_threads = True
@@ -274,6 +393,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     print(f"  datapad seat0: http://{args.host}:{args.port}/pad.html?seat=0")
     print(f"  datapad seat1: http://{args.host}:{args.port}/pad.html?seat=1")
     print(f"  websocket:     ws://{args.host}:{args.port}/ws?role=table")
+    print(f"  active game:   {args.game}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

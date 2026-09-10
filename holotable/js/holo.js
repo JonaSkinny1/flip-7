@@ -1,5 +1,5 @@
 /**
- * Helios client — WebSocket state + REST fallback for Reactor Overload.
+ * Helios client — WebSocket state + REST fallback for Reactor Overload / Sabacc.
  * Non-REACTOR stations are local mock demos (labeled).
  */
 (function (global) {
@@ -122,11 +122,25 @@
       return Promise.resolve();
     }
 
-    function newMatch(players) {
+    function newMatch(players, game) {
       const payload = { type: "new" };
       if (players) payload.players = players;
+      if (game) payload.game = game;
       if (!send(payload)) {
-        return post("/api/new", players ? { players: players } : {});
+        const body = players ? { players: players } : {};
+        if (game) body.game = game;
+        return post("/api/new", body);
+      }
+      return Promise.resolve();
+    }
+
+    function setGame(game, players) {
+      const payload = { type: "set_game", game: game };
+      if (players) payload.players = players;
+      if (!send(payload)) {
+        const body = { game: game };
+        if (players) body.players = players;
+        return post("/api/game", body);
       }
       return Promise.resolve();
     }
@@ -138,6 +152,7 @@
       hit: hit,
       stay: stay,
       newMatch: newMatch,
+      setGame: setGame,
       close: function () {
         closed = true;
         stopPoll();
@@ -151,11 +166,25 @@
     if (label === "Containment Lock" || label === "FREEZE") return "LOCK";
     if (label === "Overcharge Pulse" || label === "FLIP_THREE") return "PULSE";
     if (label === "Neutralizer Shield" || label === "SECOND_CHANCE") return "SHIELD";
+    if (label === "Sylop" || label === "SYLOP") return "Ø";
     return String(label);
   }
 
   function isActionLabel(label) {
-    return /Lock|Pulse|Shield|FREEZE|FLIP|SECOND/i.test(String(label));
+    return /Lock|Pulse|Shield|FREEZE|FLIP|SECOND|Sylop/i.test(String(label));
+  }
+
+  function isSabacc(state) {
+    return state && (state.rules === "sabacc" || state.game === "sabacc");
+  }
+
+  function cardPolarity(label) {
+    const s = String(label || "");
+    if (s === "Sylop" || s === "SYLOP" || s === "Ø" || s === "0") return "sylop";
+    if (/^\+\d/.test(s) || (s !== "" && !s.startsWith("-") && /^\d+$/.test(s) && Number(s) > 0))
+      return "pos";
+    if (/^-\d/.test(s)) return "neg";
+    return "";
   }
 
   /** Station mock helpers (local only) */
@@ -189,6 +218,8 @@
     connect: connect,
     cardShort: cardShort,
     isActionLabel: isActionLabel,
+    isSabacc: isSabacc,
+    cardPolarity: cardPolarity,
     Stations: Stations,
   };
 })(typeof window !== "undefined" ? window : globalThis);
