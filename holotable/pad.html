@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Helios Datapad — Table Games</title>
   <link rel="stylesheet" href="css/holo.css" />
 </head>
@@ -13,39 +13,50 @@
       <span class="tag" id="player-tag">PRIVATE</span>
     </header>
 
-    <div class="game-picker panel" style="margin-bottom:0.75rem">
+    <div class="pad-turn waiting" id="pad-turn" aria-live="polite">Waiting…</div>
+
+    <div class="game-picker panel" id="game-picker" role="radiogroup" aria-label="Select game">
       <h2>Game</h2>
       <div class="picker-row">
-        <button type="button" class="pick active" data-game="flip7" id="pick-flip7">
+        <button type="button" class="pick active" data-game="flip7" id="pick-flip7"
+                role="radio" aria-checked="true">
           Reactor Overload
+          <span class="pick-sub">Flip 7</span>
         </button>
-        <button type="button" class="pick" data-game="sabacc" id="pick-sabacc">
+        <button type="button" class="pick" data-game="sabacc" id="pick-sabacc"
+                role="radio" aria-checked="false">
           Sabacc
+          <span class="pick-sub">Spike · 0</span>
         </button>
       </div>
     </div>
 
     <section class="panel" aria-label="Hand">
-      <h2 id="hand-heading">Hand</h2>
+      <h2 id="hand-heading">Your hand</h2>
       <div class="hand" id="hand"></div>
-      <p class="legend" id="pad-sum" hidden></p>
+      <p class="pad-sum-line" id="pad-sum" hidden></p>
     </section>
 
     <div class="actions">
-      <button type="button" id="btn-hit">Hit · Draw Core</button>
-      <button type="button" id="btn-stay">Stay · Bank Charge</button>
+      <button type="button" id="btn-hit">Hit · Draw</button>
+      <button type="button" id="btn-stay">Stay · Bank</button>
       <button type="button" class="hazard" id="btn-new">New match</button>
     </div>
 
     <p class="pad-meta" id="pad-meta">Connecting…</p>
-    <p class="conn" id="conn" style="text-align:center;margin-top:0.5rem">…</p>
+    <p class="conn" id="conn" style="text-align:center;margin-top:0.45rem">…</p>
 
-    <p class="todo" id="pad-todo">
-      Containment Lock / Overcharge Pulse / Neutralizer Shield resolve in the
-      Python <code>flip7</code> engine. Public table:
-      <a href="index.html#REACTOR">Helios REACTOR</a>.
-      Seat via <code>?seat=0</code>, <code>?seat=1</code>, …
-    </p>
+    <div class="todo">
+      <details>
+        <summary>Help · seat &amp; table</summary>
+        <p id="pad-todo">
+          Containment Lock / Overcharge Pulse / Neutralizer Shield resolve in the
+          Python <code>flip7</code> engine. Public table:
+          <a href="index.html#REACTOR">Helios REACTOR</a>.
+          Seat via <code>?seat=0</code>, <code>?seat=1</code>, …
+        </p>
+      </details>
+    </div>
   </div>
   <script src="js/holo.js"></script>
   <script>
@@ -56,6 +67,7 @@
 
       let state = null;
       let client = null;
+      let lastRules = "flip7";
 
       function cardEl(label, sabacc) {
         const div = document.createElement("div");
@@ -84,9 +96,11 @@
       }
 
       function syncPicker(rules) {
-        const id = rules === "sabacc" ? "sabacc" : "flip7";
+        lastRules = rules === "sabacc" ? "sabacc" : "flip7";
         document.querySelectorAll(".pick").forEach(function (btn) {
-          btn.classList.toggle("active", btn.getAttribute("data-game") === id);
+          const on = btn.getAttribute("data-game") === lastRules;
+          btn.classList.toggle("active", on);
+          btn.setAttribute("aria-checked", on ? "true" : "false");
         });
       }
 
@@ -97,10 +111,10 @@
 
         document.getElementById("btn-hit").textContent = sabacc
           ? "Draw · Hit"
-          : "Hit · Draw Core";
+          : "Hit · Draw";
         document.getElementById("btn-stay").textContent = sabacc
           ? "Stand · Bank"
-          : "Stay · Bank Charge";
+          : "Stay · Bank";
         document.getElementById("pad-todo").innerHTML = sabacc
           ? "Sabacc house rules (Spike toward 0). Bomb-out if |sum| &gt; 23. " +
             "Fan/home private table — not a licensed Lucasfilm product. " +
@@ -122,26 +136,37 @@
           const hs = s.hand_sum || 0;
           sumEl.textContent =
             "Sum " + (hs > 0 ? "+" : "") + hs +
-            " · stand worth " + (s.turn_score || 0) +
-            " · race to " + (s.target || 100);
+            " · stand " + (s.turn_score || 0) +
+            " · to " + (s.target || 100);
         } else {
-          sumEl.hidden = true;
+          sumEl.hidden = false;
+          sumEl.textContent =
+            "Turn charge " + (s.turn_score || 0) +
+            (!sabacc && s.shield ? " · SHIELD" : "") +
+            " · to " + (s.target || 200);
         }
 
         const can = s.can_act && s.active_seat === seat;
         document.getElementById("btn-hit").disabled = !can;
         document.getElementById("btn-stay").disabled = !can;
 
+        const turn = document.getElementById("pad-turn");
+        if (can) {
+          turn.className = "pad-turn your-turn";
+          turn.textContent = "Your turn · act now";
+        } else if (s.active_seat === seat) {
+          turn.className = "pad-turn waiting";
+          turn.textContent = "Your seat · resolving…";
+        } else {
+          turn.className = "pad-turn waiting";
+          turn.textContent = "Waiting · seat " + s.active_seat + " acting";
+        }
+
         const me = (s.players || []).find(function (p) { return p.seat === seat; });
         document.getElementById("pad-meta").textContent =
-          (me ? me.name + " · score " + me.score : "Seat " + seat) +
-          (sabacc
-            ? " · sum " + ((s.hand_sum > 0 ? "+" : "") + (s.hand_sum || 0))
-            : " · turn charge " + (s.turn_score || 0)) +
-          (!sabacc && s.shield ? " · SHIELD" : "") +
-          " · active S" + s.active_seat +
-          " · " + (s.title || "") +
-          " · " + (s.status || "");
+          (me ? me.name + " · " + me.score + " pts" : "Seat " + seat) +
+          " · " + (s.title || (sabacc ? "Sabacc" : "Reactor Overload")) +
+          (s.status ? " · " + s.status : "");
       }
 
       document.getElementById("btn-hit").addEventListener("click", function () {
@@ -159,10 +184,12 @@
           document.getElementById("pad-meta").textContent = String(e.message || e);
         });
       });
-      document.querySelector(".game-picker").addEventListener("click", function (e) {
+      document.getElementById("game-picker").addEventListener("click", function (e) {
         const btn = e.target.closest("button[data-game]");
         if (!btn || !client) return;
-        client.setGame(btn.getAttribute("data-game")).catch(function (err) {
+        const game = btn.getAttribute("data-game");
+        if (game === lastRules) return;
+        client.setGame(game).catch(function (err) {
           document.getElementById("pad-meta").textContent = String(err.message || err);
         });
       });

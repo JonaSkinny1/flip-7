@@ -89,6 +89,16 @@ Fan/home private table — **not** a Lucasfilm product.
 - **Match:** first to **100** wins.
 - Actions reuse the same datapad Hit / Stay buttons and `/api/hit` · `/api/stay` endpoints.
 
+## Holotable UX (UI pass)
+
+REACTOR table and datapad polish for kiosk / dark-room viewing (no engine changes):
+
+- **Table:** match HUD (game · turn · race target), clearer crew piles with **TURN** badge, higher teal/orange contrast.
+- **Pad:** large Hit/Stay targets, **Your turn** banner, help collapsed under details.
+- **Game picker:** oversized dual buttons with **ACTIVE** badge; re-tap of current game ignored.
+
+Details: `holotable/BRIDGE.md` (UX notes).
+
 ## Architecture
 
 - `flip7/` — Flip 7 (`deck`, `game`, `turn`, `live`) + Sabacc (`sabacc`, `sabacc_live`) + `server` (stdlib HTTP + WebSocket).
