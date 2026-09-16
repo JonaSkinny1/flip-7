@@ -122,25 +122,40 @@
       return Promise.resolve();
     }
 
-    function newMatch(players, game) {
+    function newMatch(players, game, computers) {
       const payload = { type: "new" };
       if (players) payload.players = players;
       if (game) payload.game = game;
+      if (computers !== undefined && computers !== null) payload.computers = computers;
       if (!send(payload)) {
         const body = players ? { players: players } : {};
         if (game) body.game = game;
+        if (computers !== undefined && computers !== null) body.computers = computers;
         return post("/api/new", body);
       }
       return Promise.resolve();
     }
 
-    function setGame(game, players) {
+    function setGame(game, players, computers) {
       const payload = { type: "set_game", game: game };
       if (players) payload.players = players;
+      if (computers !== undefined && computers !== null) payload.computers = computers;
       if (!send(payload)) {
         const body = { game: game };
         if (players) body.players = players;
+        if (computers !== undefined && computers !== null) body.computers = computers;
         return post("/api/game", body);
+      }
+      return Promise.resolve();
+    }
+
+    function setComputers(n, players) {
+      const payload = { type: "set_computers", computers: n };
+      if (players) payload.players = players;
+      if (!send(payload)) {
+        const body = { computers: n };
+        if (players) body.players = players;
+        return post("/api/computers", body);
       }
       return Promise.resolve();
     }
@@ -153,6 +168,7 @@
       stay: stay,
       newMatch: newMatch,
       setGame: setGame,
+      setComputers: setComputers,
       close: function () {
         closed = true;
         stopPoll();

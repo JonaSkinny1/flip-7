@@ -875,3 +875,74 @@ kbd {
   background: var(--panel-hi);
   color: var(--teal-bright);
 }
+
+
+/* —— Computer opponents picker —— */
+.bot-picker {
+  margin-bottom: 0.45rem;
+}
+.bot-picker h2 {
+  margin-bottom: 0.45rem;
+}
+.bot-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.bot-n {
+  min-width: 3.25rem;
+  min-height: 2.75rem;
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border-radius: 6px;
+  border: 2px solid rgba(154, 168, 188, 0.4);
+  background: rgba(5, 7, 10, 0.95);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s, box-shadow 0.12s;
+}
+.bot-n:hover {
+  border-color: var(--orange);
+  color: var(--text);
+}
+.bot-n:focus-visible {
+  outline: 2px solid var(--orange-bright);
+  outline-offset: 2px;
+}
+.bot-n.active {
+  border-color: var(--orange-bright);
+  border-width: 3px;
+  background: var(--orange-dim);
+  color: var(--orange-bright);
+  box-shadow: var(--glow-orange);
+}
+.bot-badge,
+.human-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.08rem 0.35rem;
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  border-radius: 3px;
+  vertical-align: middle;
+  font-weight: 700;
+}
+.bot-badge {
+  color: var(--orange-bright);
+  border: 1px solid rgba(255, 140, 26, 0.55);
+  background: rgba(255, 140, 26, 0.12);
+}
+.human-badge {
+  color: var(--teal-bright);
+  border: 1px solid rgba(0, 196, 174, 0.45);
+  background: rgba(0, 196, 174, 0.1);
+}
+.scores li.is-bot .pile-label {
+  color: var(--orange);
+}
+.pad-shell .bot-n {
+  flex: 1 1 3rem;
+  min-height: 3rem;
+}

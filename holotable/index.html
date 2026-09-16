@@ -80,6 +80,20 @@
         </p>
       </div>
 
+      <div class="bot-picker panel" id="bot-picker" role="group" aria-label="Computer opponents">
+        <h2>Computers · solo / fill empty seats</h2>
+        <div class="bot-row" id="bot-row">
+          <button type="button" class="bot-n active" data-computers="0" aria-pressed="true">0</button>
+          <button type="button" class="bot-n" data-computers="1" aria-pressed="false">1</button>
+          <button type="button" class="bot-n" data-computers="2" aria-pressed="false">2</button>
+          <button type="button" class="bot-n" data-computers="3" aria-pressed="false">3</button>
+        </div>
+        <p class="legend">
+          Seat 0 = you (datapad). Bots auto-act — no phone pad needed.
+          Names: COSMOS · F.R.A.N.K. · Probe-7.
+        </p>
+      </div>
+
       <div class="match-hud" id="match-hud" aria-live="polite">
         <div class="hud-game" id="hud-game">Reactor Overload</div>
         <div class="hud-turn" id="hud-turn">Standby</div>
@@ -114,11 +128,10 @@
       </div>
       <div class="status-bar" id="status" role="status">Reactor standby</div>
       <p class="todo">
-        Private actions: open
-        <a href="pad.html?seat=0">pad seat 0</a> /
-        <a href="pad.html?seat=1">seat 1</a>
-        (more seats if match has them). Keys <kbd>1</kbd>–<kbd>5</kbd> switch stations.
-        Game picker above switches Flip 7 ↔ Sabacc (large targets · ACTIVE badge).
+        Solo: set <strong>Computers</strong> above, open
+        <a href="pad.html?seat=0">pad seat 0</a>.
+        Multi-human pads still work; bots fill other seats and auto-act.
+        Keys <kbd>1</kbd>–<kbd>5</kbd> switch stations.
       </p>
     </section>
 
@@ -158,6 +171,7 @@
       let current = "WEATHER";
       let client = null;
       let lastRules = "flip7";
+      let lastComputers = 0;
 
       const FLIP7_LEGEND =
         "First to <strong>200</strong>.<br />" +
@@ -243,6 +257,15 @@
         });
       }
 
+      function syncBots(n) {
+        lastComputers = Number(n) || 0;
+        document.querySelectorAll(".bot-n").forEach(function (btn) {
+          const on = Number(btn.getAttribute("data-computers")) === lastComputers;
+          btn.classList.toggle("active", on);
+          btn.setAttribute("aria-pressed", on ? "true" : "false");
+        });
+      }
+
       function activePlayer(state) {
         const seat = state.active_seat;
         const players = state.players || [];
@@ -255,6 +278,9 @@
       function renderReactor(state) {
         const sabacc = Holo.isSabacc(state);
         syncPicker(sabacc ? "sabacc" : "flip7");
+        if (state.computers !== undefined && state.computers !== null) {
+          syncBots(state.computers);
+        }
 
         const gameTitle = sabacc ? "Sabacc" : "Reactor Overload";
         document.getElementById("reactor-title").textContent = sabacc
@@ -310,10 +336,14 @@
         (state.players || []).forEach(function (p) {
           const li = document.createElement("li");
           if (p.active) li.className = "active";
+          if (p.is_bot) li.classList.add("is-bot");
           const badge = p.active ? '<span class="turn-badge">TURN</span>' : "";
+          const kind = p.is_bot
+            ? '<span class="bot-badge">CPU</span>'
+            : '<span class="human-badge">HUMAN</span>';
           li.innerHTML =
             '<span><span class="pile-label">SEAT ' + p.seat + "</span>" +
-            p.name + badge + "</span>" +
+            p.name + " " + kind + badge + "</span>" +
             '<span class="pts">' + p.score + "</span>";
           ul.appendChild(li);
         });
@@ -340,7 +370,17 @@
         if (!btn || !client) return;
         const game = btn.getAttribute("data-game");
         if (game === lastRules) return;
-        client.setGame(game).catch(function (err) {
+        client.setGame(game, null, lastComputers).catch(function (err) {
+          document.getElementById("status").textContent = String(err.message || err);
+        });
+      });
+
+      document.getElementById("bot-picker").addEventListener("click", function (e) {
+        const btn = e.target.closest("button[data-computers]");
+        if (!btn || !client) return;
+        const n = Number(btn.getAttribute("data-computers"));
+        if (n === lastComputers) return;
+        client.setComputers(n).catch(function (err) {
           document.getElementById("status").textContent = String(err.message || err);
         });
       });
