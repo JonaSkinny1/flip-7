@@ -30,14 +30,14 @@
         <div class="viz-grid">
           <div>
             <div>Kp index</div>
-            <div style="font-family:var(--mono);font-size:1.8rem;color:var(--teal)" data-kp>—</div>
+            <div style="font-family:var(--mono);font-size:1.8rem;color:var(--teal-bright)" data-kp>—</div>
             <div class="kp-blocks" aria-hidden="true">
               <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
             </div>
           </div>
           <div>
             <div>Solar flux proxy</div>
-            <div style="font-family:var(--mono);font-size:1.8rem;color:var(--orange)" data-solar>—</div>
+            <div style="font-family:var(--mono);font-size:1.8rem;color:var(--orange-bright)" data-solar>—</div>
             <div class="meter"><span data-solar-bar style="width:40%"></span></div>
             <p class="legend">Stub viz for holotable demos. Live NOAA/SWPC optional later.</p>
           </div>
@@ -61,20 +61,31 @@
 
     <!-- REACTOR -->
     <section class="station-panel" id="station-REACTOR" data-station-panel="REACTOR">
-      <div class="game-picker panel" id="game-picker" aria-label="Game picker">
-        <h2>Table game</h2>
+      <div class="game-picker panel" id="game-picker" role="radiogroup" aria-label="Select table game">
+        <h2>Table game · tap once to switch</h2>
         <div class="picker-row">
-          <button type="button" class="pick active" data-game="flip7" id="pick-flip7">
-            Reactor Overload<br /><span class="pick-sub">Flip 7 · race to 200</span>
+          <button type="button" class="pick active" data-game="flip7" id="pick-flip7"
+                  role="radio" aria-checked="true">
+            Reactor Overload
+            <span class="pick-sub">Flip 7 · race to 200</span>
           </button>
-          <button type="button" class="pick" data-game="sabacc" id="pick-sabacc">
-            Sabacc<br /><span class="pick-sub">Spike house · toward 0</span>
+          <button type="button" class="pick" data-game="sabacc" id="pick-sabacc"
+                  role="radio" aria-checked="false">
+            Sabacc
+            <span class="pick-sub">Spike house · toward 0</span>
           </button>
         </div>
         <p class="legend" id="game-disclaimer">
           Fan/home private table. Sabacc here is a simplified house game — not a licensed Lucasfilm product.
         </p>
       </div>
+
+      <div class="match-hud" id="match-hud" aria-live="polite">
+        <div class="hud-game" id="hud-game">Reactor Overload</div>
+        <div class="hud-turn" id="hud-turn">Standby</div>
+        <div class="hud-target" id="hud-target">Race to 200</div>
+      </div>
+
       <div class="reactor-grid">
         <div class="panel reactor-core-wrap">
           <h2 id="reactor-title">Reactor Overload · Flip 7 rules</h2>
@@ -86,11 +97,11 @@
             <div class="flip-card" id="last-flip">—</div>
             <div class="flip-hint" id="last-hint">awaiting flux</div>
           </div>
-          <div class="hand-row" id="public-hand"></div>
+          <div class="hand-row" id="public-hand" aria-label="Public hand"></div>
           <p class="legend" id="hand-sum-line" hidden>Hand sum: <strong id="hand-sum">0</strong></p>
         </div>
         <aside class="panel">
-          <h2>Crew scores</h2>
+          <h2 id="scores-heading">Crew scores</h2>
           <ul class="scores" id="scores"></ul>
           <p class="legend" id="rules-legend">
             First to <strong>200</strong>.<br />
@@ -101,13 +112,13 @@
           </p>
         </aside>
       </div>
-      <div class="status-bar" id="status">Reactor standby</div>
+      <div class="status-bar" id="status" role="status">Reactor standby</div>
       <p class="todo">
         Private actions: open
         <a href="pad.html?seat=0">pad seat 0</a> /
         <a href="pad.html?seat=1">seat 1</a>
         (more seats if match has them). Keys <kbd>1</kbd>–<kbd>5</kbd> switch stations.
-        Use the game picker above to switch Flip 7 ↔ Sabacc.
+        Game picker above switches Flip 7 ↔ Sabacc (large targets · ACTIVE badge).
       </p>
     </section>
 
@@ -226,24 +237,54 @@
       function syncPicker(rules) {
         lastRules = rules === "sabacc" ? "sabacc" : "flip7";
         document.querySelectorAll(".pick").forEach(function (btn) {
-          btn.classList.toggle("active", btn.getAttribute("data-game") === lastRules);
+          const on = btn.getAttribute("data-game") === lastRules;
+          btn.classList.toggle("active", on);
+          btn.setAttribute("aria-checked", on ? "true" : "false");
         });
+      }
+
+      function activePlayer(state) {
+        const seat = state.active_seat;
+        const players = state.players || [];
+        for (let i = 0; i < players.length; i++) {
+          if (players[i].seat === seat) return players[i];
+        }
+        return null;
       }
 
       function renderReactor(state) {
         const sabacc = Holo.isSabacc(state);
         syncPicker(sabacc ? "sabacc" : "flip7");
 
+        const gameTitle = sabacc ? "Sabacc" : "Reactor Overload";
         document.getElementById("reactor-title").textContent = sabacc
           ? "Sabacc · Spike house rules"
           : "Reactor Overload · Flip 7 rules";
+        document.getElementById("hud-game").textContent = gameTitle;
+        document.getElementById("hud-target").textContent = sabacc
+          ? "Race to " + (state.target || 100)
+          : "Race to " + (state.target || 200);
+
+        const ap = activePlayer(state);
+        const turnEl = document.getElementById("hud-turn");
+        if (ap) {
+          turnEl.innerHTML =
+            "Turn · <strong>" + ap.name + "</strong>" +
+            '<span class="seat-pill">S' + ap.seat + "</span>";
+        } else {
+          turnEl.textContent = "Standby";
+        }
+
         document.getElementById("core-label").textContent = sabacc
-          ? (sabacc && state.hand_sum !== undefined ? "Hand sum" : "Potential")
+          ? (state.hand_sum !== undefined ? "Hand sum" : "Potential")
           : "Turn charge";
         document.getElementById("turn-score").textContent = sabacc
           ? (state.hand_sum !== undefined ? (state.hand_sum > 0 ? "+" : "") + state.hand_sum : state.turn_score)
           : state.turn_score;
         document.getElementById("rules-legend").innerHTML = sabacc ? SABACC_LEGEND : FLIP7_LEGEND;
+        document.getElementById("scores-heading").textContent = sabacc
+          ? "Crew piles · to 100"
+          : "Crew piles · to 200";
 
         const sumLine = document.getElementById("hand-sum-line");
         if (sabacc) {
@@ -269,8 +310,10 @@
         (state.players || []).forEach(function (p) {
           const li = document.createElement("li");
           if (p.active) li.className = "active";
+          const badge = p.active ? '<span class="turn-badge">TURN</span>' : "";
           li.innerHTML =
-            '<span>' + p.name + " · S" + p.seat + "</span>" +
+            '<span><span class="pile-label">SEAT ' + p.seat + "</span>" +
+            p.name + badge + "</span>" +
             '<span class="pts">' + p.score + "</span>";
           ul.appendChild(li);
         });
@@ -296,6 +339,7 @@
         const btn = e.target.closest("button[data-game]");
         if (!btn || !client) return;
         const game = btn.getAttribute("data-game");
+        if (game === lastRules) return;
         client.setGame(game).catch(function (err) {
           document.getElementById("status").textContent = String(err.message || err);
         });
