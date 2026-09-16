@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from .sabacc import (
     SabaccGame,
@@ -24,6 +24,7 @@ class SabaccLiveMatch:
         self,
         player_names: Optional[List[str]] = None,
         rng: random.Random | None = None,
+        bot_seats: Optional[Set[int]] = None,
     ):
         names = player_names or DEFAULT_CREW[:2]
         if not 2 <= len(names) <= 4:
@@ -33,6 +34,7 @@ class SabaccLiveMatch:
         self._lock = threading.RLock()
         self._listeners: List[Callable[[dict], None]] = []
         self.game = SabaccGame(names[:4] if len(names) > 4 else names, rng=rng)
+        self.bot_seats: Set[int] = set(bot_seats or ())
         self.turn: Optional[SabaccTurnController] = None
         self.phase = "lobby"
         self.winner: Optional[SabaccPlayer] = None
@@ -59,13 +61,20 @@ class SabaccLiveMatch:
             except Exception:
                 pass
 
-    def new_match(self, player_names: Optional[List[str]] = None, seed: Optional[int] = None) -> dict:
+    def new_match(
+        self,
+        player_names: Optional[List[str]] = None,
+        seed: Optional[int] = None,
+        bot_seats: Optional[Set[int]] = None,
+    ) -> dict:
         with self._lock:
             names = player_names or [p.name for p in self.game.players]
             if not 2 <= len(names) <= 4:
                 raise ValueError("Sabacc needs 2–4 player names")
             rng = random.Random(seed) if seed is not None else random.Random()
             self.game = SabaccGame(names, rng=rng)
+            if bot_seats is not None:
+                self.bot_seats = set(bot_seats)
             self.turn = None
             self.winner = None
             self.match_id += 1
@@ -115,7 +124,8 @@ class SabaccLiveMatch:
                 self.phase = "choosing"
                 p = self.game.players[self.game.current]
                 total = self.turn.hand_sum
-                self.status = f"{p.name}'s turn — sum {total:+d} · Draw or Stand"
+                kind = "computer" if self.game.current in self.bot_seats else "crew"
+                self.status = f"{p.name}'s turn ({kind}) — sum {total:+d} · Draw or Stand"
                 return
             self._settle_result(result)
             if self.winner:
@@ -146,7 +156,11 @@ class SabaccLiveMatch:
             assert self.turn is not None
             self.phase = "choosing"
             p = self.game.players[self.game.current]
-            self.status = f"{p.name}'s turn — sum {self.turn.hand_sum:+d} · Draw or Stand"
+            self.status = (
+                f"{p.name}'s turn "
+                f"({'computer' if self.game.current in self.bot_seats else 'crew'}) — "
+                f"sum {self.turn.hand_sum:+d} · Draw or Stand"
+            )
             return
         self._settle_result(result)
         if not self.winner:
@@ -159,6 +173,7 @@ class SabaccLiveMatch:
             hand = list(t.hand) if t and not t.done else []
             last = t.last_card if t else None
             hand_sum = hand_total(hand) if hand else (t.hand_sum if t and not t.done else 0)
+            computers = len(self.bot_seats)
             return {
                 "station": "REACTOR",
                 "title": "Sabacc",
@@ -172,6 +187,7 @@ class SabaccLiveMatch:
                 "status": self.status,
                 "active_seat": g.current,
                 "active_name": g.players[g.current].name if g.players else "",
+                "active_is_bot": g.current in self.bot_seats,
                 "winner": None
                 if not self.winner
                 else {
@@ -180,9 +196,17 @@ class SabaccLiveMatch:
                     "score": self.winner.score,
                 },
                 "players": [
-                    {"seat": i, "name": p.name, "score": p.score, "active": i == g.current}
+                    {
+                        "seat": i,
+                        "name": p.name,
+                        "score": p.score,
+                        "active": i == g.current,
+                        "is_bot": i in self.bot_seats,
+                        "kind": "computer" if i in self.bot_seats else "human",
+                    }
                     for i, p in enumerate(g.players)
                 ],
+                "computers": computers,
                 "hand": [display_sabacc_card(c) for c in hand],
                 "hand_raw": hand,
                 "hand_sum": hand_sum,

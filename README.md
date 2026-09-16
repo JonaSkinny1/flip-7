@@ -44,6 +44,19 @@ http://127.0.0.1:8766/pad.html?seat=1
 
 Sync: **WebSocket** `ws://127.0.0.1:8766/ws?role=table|pad&seat=N` with REST fallback (`GET /api/state`, `POST /api/hit|stay|new|game`).
 
+### Solo with computer opponents
+
+1. Start the Helios server (optionally with bots at boot):
+   ```bash
+   python3 -m flip7.server --host 0.0.0.0 --port 8766
+   # or: python3 -m flip7.server --computers 2
+   ```
+2. Open the public table → **REACTOR**, or your datapad (`pad.html?seat=0`).
+3. Tap **Computers: 0 / 1 / 2 / 3** (starts a new match: you = Pilot at seat 0; bots = COSMOS, F.R.A.N.K., Probe-7).
+4. Play from **pad seat 0** only — bots auto-act on their turn (no phone pad).
+
+REST: `POST /api/computers` with `{"computers":2}`. WebSocket: `{"type":"set_computers","computers":2}`.
+
 ### Switch games
 
 - On the **REACTOR** panel (or datapad): tap **Reactor Overload** or **Sabacc**.
@@ -101,7 +114,7 @@ Details: `holotable/BRIDGE.md` (UX notes).
 
 ## Architecture
 
-- `flip7/` — Flip 7 (`deck`, `game`, `turn`, `live`) + Sabacc (`sabacc`, `sabacc_live`) + `server` (stdlib HTTP + WebSocket).
+- `flip7/` — Flip 7 (`deck`, `game`, `turn`, `live`) + Sabacc (`sabacc`, `sabacc_live`) + computer opponents (`bots`) + `server` (stdlib HTTP + WebSocket).
 - `holotable/` — Helios static UI (`index.html`, `pad.html`, `css/`, `js/`).
 - See `holotable/BRIDGE.md`.
 
@@ -110,6 +123,7 @@ Details: `holotable/BRIDGE.md` (UX notes).
 - [x] Terminal multiplayer rules engine
 - [x] Helios five-station shell + Reactor Overload live server
 - [x] Sabacc as second REACTOR game + game picker
+- [x] Computer opponents (solo / fill seats; server-driven)
 - [ ] Godot 4 table UI / Pepper’s Ghost layout (phase 2)
 - [ ] Physical Pepper’s Ghost, Helios station hardware, actuators, MQTT / Home Assistant
 - [ ] Live WEATHER / NAV data feeds

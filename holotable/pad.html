@@ -31,6 +31,17 @@
       </div>
     </div>
 
+    <div class="bot-picker panel" id="bot-picker" role="group" aria-label="Computer opponents">
+      <h2>Computers</h2>
+      <div class="bot-row" id="bot-row">
+        <button type="button" class="bot-n active" data-computers="0" aria-pressed="true">0</button>
+        <button type="button" class="bot-n" data-computers="1" aria-pressed="false">1</button>
+        <button type="button" class="bot-n" data-computers="2" aria-pressed="false">2</button>
+        <button type="button" class="bot-n" data-computers="3" aria-pressed="false">3</button>
+      </div>
+      <p class="legend" style="margin:0.4rem 0 0">Solo: pick 1–3. Bots need no pad.</p>
+    </div>
+
     <section class="panel" aria-label="Hand">
       <h2 id="hand-heading">Your hand</h2>
       <div class="hand" id="hand"></div>
@@ -68,6 +79,7 @@
       let state = null;
       let client = null;
       let lastRules = "flip7";
+      let lastComputers = 0;
 
       function cardEl(label, sabacc) {
         const div = document.createElement("div");
@@ -104,10 +116,20 @@
         });
       }
 
+      function syncBots(n) {
+        lastComputers = Number(n) || 0;
+        document.querySelectorAll(".bot-n").forEach(function (btn) {
+          const on = Number(btn.getAttribute("data-computers")) === lastComputers;
+          btn.classList.toggle("active", on);
+          btn.setAttribute("aria-pressed", on ? "true" : "false");
+        });
+      }
+
       function render(s) {
         state = s;
         const sabacc = Holo.isSabacc(s);
         syncPicker(sabacc ? "sabacc" : "flip7");
+        if (s.computers !== undefined && s.computers !== null) syncBots(s.computers);
 
         document.getElementById("btn-hit").textContent = sabacc
           ? "Draw · Hit"
@@ -159,7 +181,11 @@
           turn.textContent = "Your seat · resolving…";
         } else {
           turn.className = "pad-turn waiting";
-          turn.textContent = "Waiting · seat " + s.active_seat + " acting";
+          const who = (s.players || []).find(function (p) { return p.seat === s.active_seat; });
+          const label = who
+            ? (who.is_bot ? who.name + " (CPU)" : who.name)
+            : ("seat " + s.active_seat);
+          turn.textContent = "Waiting · " + label;
         }
 
         const me = (s.players || []).find(function (p) { return p.seat === seat; });
@@ -180,7 +206,7 @@
         });
       });
       document.getElementById("btn-new").addEventListener("click", function () {
-        client && client.newMatch().catch(function (e) {
+        client && client.newMatch(null, null, lastComputers).catch(function (e) {
           document.getElementById("pad-meta").textContent = String(e.message || e);
         });
       });
@@ -189,7 +215,16 @@
         if (!btn || !client) return;
         const game = btn.getAttribute("data-game");
         if (game === lastRules) return;
-        client.setGame(game).catch(function (err) {
+        client.setGame(game, null, lastComputers).catch(function (err) {
+          document.getElementById("pad-meta").textContent = String(err.message || err);
+        });
+      });
+      document.getElementById("bot-picker").addEventListener("click", function (e) {
+        const btn = e.target.closest("button[data-computers]");
+        if (!btn || !client) return;
+        const n = Number(btn.getAttribute("data-computers"));
+        if (n === lastComputers) return;
+        client.setComputers(n).catch(function (err) {
           document.getElementById("pad-meta").textContent = String(err.message || err);
         });
       });

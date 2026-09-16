@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from .game import Flip7Game, Player
 from .turn import TurnController
@@ -43,11 +43,13 @@ class LiveMatch:
         self,
         player_names: Optional[List[str]] = None,
         rng: random.Random | None = None,
+        bot_seats: Optional[Set[int]] = None,
     ):
         names = player_names or DEFAULT_CREW[:2]
         self._lock = threading.RLock()
         self._listeners: List[Callable[[dict], None]] = []
         self.game = Flip7Game(names, rng=rng)
+        self.bot_seats: Set[int] = set(bot_seats or ())
         self.turn: Optional[TurnController] = None
         self.phase = "lobby"  # lobby | choosing | resolving | between | won
         self.winner: Optional[Player] = None
@@ -74,11 +76,18 @@ class LiveMatch:
             except Exception:
                 pass
 
-    def new_match(self, player_names: Optional[List[str]] = None, seed: Optional[int] = None) -> dict:
+    def new_match(
+        self,
+        player_names: Optional[List[str]] = None,
+        seed: Optional[int] = None,
+        bot_seats: Optional[Set[int]] = None,
+    ) -> dict:
         with self._lock:
             names = player_names or [p.name for p in self.game.players]
             rng = random.Random(seed) if seed is not None else random.Random()
             self.game = Flip7Game(names, rng=rng)
+            if bot_seats is not None:
+                self.bot_seats = set(bot_seats)
             self.turn = None
             self.winner = None
             self.match_id += 1
@@ -128,7 +137,8 @@ class LiveMatch:
             if result is None:
                 self.phase = "choosing"
                 p = self.game.players[self.game.current]
-                self.status = f"{p.name}'s turn — Draw Core or Bank Charge"
+                kind = "computer" if self.game.current in self.bot_seats else "crew"
+                self.status = f"{p.name}'s turn ({kind}) — Draw Core or Bank Charge"
                 return
             self._settle_result(result)
             if self.winner:
@@ -162,7 +172,8 @@ class LiveMatch:
             assert self.turn is not None
             self.phase = "choosing"
             p = self.game.players[self.game.current]
-            self.status = f"{p.name}'s turn — Draw Core or Bank Charge"
+            kind = "computer" if self.game.current in self.bot_seats else "crew"
+            self.status = f"{p.name}'s turn ({kind}) — Draw Core or Bank Charge"
             return
         self._settle_result(result)
         if not self.winner:
@@ -174,6 +185,7 @@ class LiveMatch:
             t = self.turn
             hand = list(t.hand) if t and not t.done else []
             last = t.last_card if t else None
+            computers = len(self.bot_seats)
             return {
                 "station": "REACTOR",
                 "title": "Reactor Overload",
@@ -185,13 +197,26 @@ class LiveMatch:
                 "status": self.status,
                 "active_seat": g.current,
                 "active_name": g.players[g.current].name if g.players else "",
+                "active_is_bot": g.current in self.bot_seats,
                 "winner": None
                 if not self.winner
-                else {"seat": next(i for i, p in enumerate(g.players) if p is self.winner), "name": self.winner.name, "score": self.winner.score},
+                else {
+                    "seat": next(i for i, p in enumerate(g.players) if p is self.winner),
+                    "name": self.winner.name,
+                    "score": self.winner.score,
+                },
                 "players": [
-                    {"seat": i, "name": p.name, "score": p.score, "active": i == g.current}
+                    {
+                        "seat": i,
+                        "name": p.name,
+                        "score": p.score,
+                        "active": i == g.current,
+                        "is_bot": i in self.bot_seats,
+                        "kind": "computer" if i in self.bot_seats else "human",
+                    }
                     for i, p in enumerate(g.players)
                 ],
+                "computers": computers,
                 "hand": [display_card(c) for c in hand],
                 "hand_raw": hand,
                 "turn_score": t.turn_score if t and not t.done else 0,
